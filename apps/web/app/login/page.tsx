@@ -10,8 +10,19 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
-    const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    const [googleClientId, setGoogleClientId] = useState<string | null>(
+        process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null
+    );
     const router = useRouter();
+
+    useEffect(() => {
+        if (!googleClientId) {
+            fetch("/api/env")
+                .then((res) => res.json())
+                .then((data) => setGoogleClientId(data.googleClientId || null))
+                .catch(() => null);
+        }
+    }, [googleClientId]);
 
     useEffect(() => {
         if (!googleClientId) return;
