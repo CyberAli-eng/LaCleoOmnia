@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int           @id @default(autoincrement())
+  email     String        @unique
+  name      String?
+  password  String        // Hashed password
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  integrations Integration[]
+}
+
+model Integration {
+  id        Int      @id @default(autoincrement())
+  type      String   // 'AMAZON', 'SHOPIFY', 'WOO'
+  name      String?  // Friendly name e.g. "My US Store"
+  credentials String // JSON string of credentials (encrypted ideally, plain for MVP)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WebhookEvent {
+  id          Int      @id @default(autoincrement())
+  source      String
+  eventType   String?
+  payload     String
+  receivedAt  DateTime @default(now())
+  processedAt DateTime?
+}
+
+model Order {
+  id         Int      @id @default(autoincrement())
+  externalId String?
+  source     String
+  status     String
+  total      Float?
+  currency   String?
+  payload    String?
+  items      OrderItem[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model OrderItem {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  sku       String
+  name      String?
+  quantity  Int
+  price     Float?
+  order     Order    @relation(fields: [orderId], references: [id])
+}
+
+model Product {
+  id        Int      @id @default(autoincrement())
+  sku       String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Inventory {
+  id        Int      @id @default(autoincrement())
+  sku       String   @unique
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InventoryLog {
+  id        Int      @id @default(autoincrement())
+  sku       String
+  delta     Int
+  reason    String
+  createdAt DateTime @default(now())
+}
+
+model InventoryBroadcast {
+  id        Int      @id @default(autoincrement())
+  source    String?
+  payload   String
+  createdAt DateTime @default(now())
+}
+
+model EventLog {
+  id        Int      @id @default(autoincrement())
+  type      String
+  payload   String
+  createdAt DateTime @default(now())
+}
+
+model WorkerJob {
+  id        Int      @id @default(autoincrement())
+  type      String
+  status    String
+  payload   String?
+  attempts  Int      @default(0)
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Label {
+  id        Int      @id @default(autoincrement())
+  orderId   Int?
+  url       String
+  createdAt DateTime @default(now())
+}

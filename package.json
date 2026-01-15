@@ -1,0 +1,17 @@
+{
+  "name": "lacleo-omnia",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=apps/web\" \"npm run dev --workspace=apps/api\"",
+    "build": "npm run build --workspaces",
+    "start": "npm run start --workspaces"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
