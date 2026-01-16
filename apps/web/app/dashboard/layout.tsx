@@ -1,21 +1,36 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const navItems = [
   { href: "/dashboard/orders", label: "Orders" },
   { href: "/dashboard/inventory", label: "Inventory" },
+  { href: "/dashboard/integrations", label: "Integrations" },
+  { href: "/dashboard/webhooks", label: "Webhooks" },
+  { href: "/dashboard/analytics", label: "Analytics" },
+  { href: "/dashboard/workers", label: "Workers" },
+  { href: "/dashboard/labels", label: "Labels" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
       router.push("/login");
+    }
+    const stored = localStorage.getItem("user");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setUserName(parsed?.name || parsed?.email || null);
+      } catch {
+        setUserName(null);
+      }
     }
   }, [router]);
 
@@ -39,7 +54,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1">
           <div className="border-b border-slate-200 bg-white px-6 py-4">
             <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold text-slate-900">Seller Portal</div>
+              <div className="text-lg font-semibold text-slate-900">
+                Seller Portal{userName ? ` · ${userName}` : ""}
+              </div>
               <button
                 className="text-sm font-semibold text-slate-600 hover:text-blue-600"
                 onClick={() => {

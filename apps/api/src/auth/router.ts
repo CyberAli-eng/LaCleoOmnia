@@ -69,6 +69,24 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 });
 
+router.get('/status', async (req: Request, res: Response) => {
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    if (!token) {
+        return res.status(401).json({ error: 'Missing token' });
+    }
+    try {
+        const payload = jwt.verify(token, JWT_SECRET) as { userId: number };
+        const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+        if (!user) {
+            return res.status(401).json({ error: 'User not found' });
+        }
+        return res.json({ ok: true, user: { id: user.id, email: user.email, name: user.name } });
+    } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+});
+
 // Google OAuth (MVP stub)
 router.post('/google', async (req: Request, res: Response) => {
     try {

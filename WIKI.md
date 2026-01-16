@@ -35,6 +35,7 @@ Base router: `apps/api/src/routes/index.ts`
 | POST | `/api/auth/register` | Register a user |
 | POST | `/api/auth/login` | Login and receive JWT |
 | POST | `/api/auth/google` | Google login (ID token) |
+| GET | `/api/auth/status` | Validate JWT + return user |
 | POST | `/api/config` | Save integration config |
 | GET | `/api/config/me` | List integrations for the authenticated user |
 | GET | `/api/webhooks` | List webhook events |
@@ -47,6 +48,7 @@ Base router: `apps/api/src/routes/index.ts`
 | GET | `/api/workers` | List worker jobs |
 | POST | `/api/workers/order-sync` | Enqueue order sync job |
 | POST | `/api/workers/inventory-sync` | Enqueue inventory sync job |
+| GET | `/api/labels` | List labels |
 | POST | `/api/labels/generate` | Generate label (stub) |
 
 ### Authentication
@@ -92,8 +94,14 @@ Recommended env vars:
 App Router pages:
 - `/` redirects to login
 - `/login` login form
+- `/register` sign-up form
 - `/dashboard/orders` marketplace orders
 - `/dashboard/inventory` inventory counts (read-only)
+- `/dashboard/integrations` integration settings
+- `/dashboard/webhooks` webhook activity
+- `/dashboard/analytics` analytics snapshot
+- `/dashboard/workers` job queue controls
+- `/dashboard/labels` label downloads
 
 ### Auth flow
 1. `apps/web/app/login/page.tsx` submits credentials to `/api/auth/login` or `/api/auth/google`.
