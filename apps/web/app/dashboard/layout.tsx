@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
 const navItems = [
+  { href: "/dashboard", label: "Overview" },
   { href: "/dashboard/orders", label: "Orders" },
   { href: "/dashboard/inventory", label: "Inventory" },
   { href: "/dashboard/integrations", label: "Integrations" },
@@ -16,6 +17,7 @@ const navItems = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -38,17 +40,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-slate-50">
       <div className="flex">
         <aside className="hidden w-64 border-r border-slate-200 bg-white p-6 lg:block">
-          <div className="text-lg font-bold text-blue-600">LaCleoOmnia</div>
+          <Link href="/dashboard" className="text-lg font-bold text-blue-600 hover:text-blue-700 block">
+            LaCleoOmnia
+          </Link>
           <nav className="mt-8 space-y-2 text-sm">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="block rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              >
-                {item.label}
-              </Link>
-            ))}
+            {navItems.map((item) => {
+              const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname?.startsWith(item.href));
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`block rounded-lg px-3 py-2 transition-colors ${
+                    isActive
+                      ? "bg-blue-50 text-blue-700 font-medium"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
         </aside>
         <main className="flex-1">
