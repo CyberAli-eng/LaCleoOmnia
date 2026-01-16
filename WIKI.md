@@ -86,17 +86,42 @@ Base router: `apps/api/src/routes/index.ts`
 - `DATABASE_URL=file:./dev.db`
 - `JWT_SECRET=supersecret_for_mvp`
 
-Recommended env vars:
-- `GOOGLE_CLIENT_ID` (API) and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (web)
-- `REDIS_URL`
-- `WEBHOOK_BASE_URL` (public API base for webhook registration)
-- `SHOPIFY_WEBHOOK_SECRET` (optional fallback; prefer per-store app secret in UI)
-- `S3_ENDPOINT` (MinIO) or leave empty for AWS
-- `S3_REGION`
-- `S3_ACCESS_KEY_ID`
-- `S3_SECRET_ACCESS_KEY`
-- `S3_BUCKET`
-- `S3_PUBLIC_URL` (optional public base URL)
+**Required Environment Variables:**
+
+**For Production (Render/Railway/etc):**
+```bash
+# Database
+DATABASE_URL=postgresql://user:pass@host/db
+
+# Authentication
+JWT_SECRET=your-secure-random-secret-here
+GOOGLE_CLIENT_ID=your-google-client-id
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id
+
+# Redis (for queues and locks)
+REDIS_URL=redis://host:port
+
+# Webhooks (CRITICAL for Shopify integration)
+WEBHOOK_BASE_URL=https://your-api-domain.onrender.com
+# Example: WEBHOOK_BASE_URL=https://lacleoomnia.onrender.com
+# This is the public URL where Shopify will send webhooks
+# Must be accessible from the internet (no localhost)
+
+# S3/MinIO (for label storage)
+S3_ENDPOINT=https://s3.amazonaws.com  # or MinIO endpoint
+S3_REGION=us-east-1
+S3_ACCESS_KEY_ID=your-access-key
+S3_SECRET_ACCESS_KEY=your-secret-key
+S3_BUCKET=your-bucket-name
+S3_PUBLIC_URL=https://your-bucket.s3.amazonaws.com  # optional
+```
+
+**Important Notes:**
+- `WEBHOOK_BASE_URL` must be your **public API URL** (not localhost)
+- Shopify webhooks will be registered to: `${WEBHOOK_BASE_URL}/api/webhooks/shopify`
+- If `WEBHOOK_BASE_URL` is not set, integrations will save but webhooks won't be registered
+- Each Shopify integration stores its own `appSecret` (encrypted) for HMAC verification
+- `SHOPIFY_WEBHOOK_SECRET` is optional (prefer per-store app secret in UI)
 
 ## Web App (`apps/web`)
 
@@ -125,11 +150,70 @@ App Router pages:
 ### API helper
 `apps/web/utils/api.ts` provides a minimal `fetchFromApi()` helper.
 
+## Webhook Setup Guide
+
+### Shopify Webhook Configuration
+
+1. **Set `WEBHOOK_BASE_URL` in your API environment:**
+   ```bash
+   WEBHOOK_BASE_URL=https://lacleoomnia.onrender.com
+   ```
+   - This must be your **public API URL** (accessible from the internet)
+   - Do NOT use `localhost` or `127.0.0.1`
+   - Shopify will send webhooks to: `${WEBHOOK_BASE_URL}/api/webhooks/shopify`
+
+2. **Add Shopify Integration:**
+   - Go to Dashboard → Integrations
+   - Select "SHOPIFY" type
+   - Enter:
+     - **Shop Domain**: `your-store.myshopify.com`
+     - **Admin Access Token**: `shpat_...` (from Shopify Admin API)
+     - **App Secret**: `shpss_...` (from Shopify App settings)
+   - Click "Save Integration"
+   - Webhooks will auto-register for:
+     - `orders/create`
+     - `orders/updated`
+     - `products/update`
+     - `inventory_levels/update`
+
+3. **Verify Webhook Status:**
+   - Check the "Webhooks" badge on the integration card
+   - Click the integration to expand and see individual webhook topics
+   - Status shows: "Healthy (4/4)" when all webhooks are active
+
+4. **Re-register Webhooks:**
+   - If webhooks fail, click "Re-register Webhooks" button
+   - This will attempt to register all webhooks again
+
+5. **Test Webhook Reception:**
+   - Create a test order in your Shopify store
+   - Check Dashboard → Webhooks to see incoming events
+   - Orders should appear in Dashboard → Orders
+
+### Troubleshooting
+
+**Webhooks show "Not configured":**
+- Check that `WEBHOOK_BASE_URL` is set in your API environment
+- Verify the URL is publicly accessible (not localhost)
+- Try clicking "Re-register Webhooks"
+
+**Webhooks show "Issues" or "FAILED":**
+- Check Shopify Admin → Settings → Notifications → Webhooks
+- Verify the webhook URL is correct
+- Check API logs for errors
+- Ensure your API is running and accessible
+
+**"WEBHOOK_BASE_URL not configured" error:**
+- Set `WEBHOOK_BASE_URL` in your Render/Railway environment variables
+- Restart your API service after adding the variable
+- Integration will save but webhooks won't register until this is set
+
 ## Local Development
 
 ### Prerequisites
 - Node.js and npm
 - SQLite (via Prisma)
+- Redis (for queues and locks) - optional for basic testing
 
 ### Install
 ```

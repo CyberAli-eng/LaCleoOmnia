@@ -10,7 +10,13 @@ export async function fetchFromApi(path: string, init?: RequestInit) {
     });
 
     if (!res.ok) {
-        throw new Error('Failed to fetch data');
+        try {
+            const data = await res.json();
+            throw new Error(data?.error || data?.message || 'Failed to fetch data');
+        } catch {
+            const text = await res.text();
+            throw new Error(text || 'Failed to fetch data');
+        }
     }
 
     return res.json();

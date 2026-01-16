@@ -16,6 +16,13 @@ export default function LoginPage() {
     const router = useRouter();
 
     useEffect(() => {
+        const token = localStorage.getItem("token");
+        if (token) {
+            router.replace("/dashboard");
+        }
+    }, [router]);
+
+    useEffect(() => {
         if (!googleClientId) {
             fetch("/api/env")
                 .then((res) => res.json())

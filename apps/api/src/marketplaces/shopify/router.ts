@@ -5,15 +5,19 @@ import { ShopifyService } from '../../integrations/shopify/service';
 
 const router = Router();
 
-async function getShopifyService(req: Request) {
+async function getShopifyService(req: Request, integrationId?: number) {
     const userId = (req as Request & { user?: { id: number } }).user?.id;
     if (!userId) {
         throw new Error('Unauthorized');
     }
-    const integration = await prisma.integration.findFirst({
-        where: { userId, type: 'SHOPIFY' },
-        orderBy: { createdAt: 'desc' },
-    });
+    const integration = integrationId
+        ? await prisma.integration.findFirst({
+            where: { id: integrationId, userId, type: 'SHOPIFY' },
+        })
+        : await prisma.integration.findFirst({
+            where: { userId, type: 'SHOPIFY' },
+            orderBy: { createdAt: 'desc' },
+        });
     if (!integration) {
         throw new Error('Shopify integration not configured');
     }
@@ -59,7 +63,8 @@ router.get('/inventory', async (req: Request, res: Response) => {
 
 router.get('/shop', async (req: Request, res: Response) => {
     try {
-        const service = await getShopifyService(req);
+        const integrationId = req.query.integrationId ? Number(req.query.integrationId) : undefined;
+        const service = await getShopifyService(req, integrationId);
         const shop = await service.getShop();
         res.json(shop);
     } catch (error: any) {
