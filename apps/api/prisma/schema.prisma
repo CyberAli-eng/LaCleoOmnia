@@ -24,6 +24,10 @@ model Integration {
   credentials String // JSON string of credentials (encrypted ideally, plain for MVP)
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
+  webhooks  WebhookSubscription[]
+  inventorySyncEnabled Boolean @default(false)
+  inventorySyncIntervalMinutes Int @default(60)
+  lastInventorySyncAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -35,6 +39,20 @@ model WebhookEvent {
   payload     String
   receivedAt  DateTime @default(now())
   processedAt DateTime?
+}
+
+model WebhookSubscription {
+  id            Int      @id @default(autoincrement())
+  integrationId Int
+  topic         String
+  address       String
+  status        String   @default("ACTIVE")
+  lastError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  integration   Integration @relation(fields: [integrationId], references: [id])
+
+  @@unique([integrationId, topic], name: "integrationId_topic")
 }
 
 model Order {

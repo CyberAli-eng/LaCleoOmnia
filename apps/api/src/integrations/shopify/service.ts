@@ -1,14 +1,31 @@
 export class ShopifyService {
+    constructor(private shopDomain?: string, private token?: string) {}
+
+    private async request(path: string): Promise<any> {
+        if (!this.shopDomain || !this.token) {
+            throw new Error('Shopify credentials missing');
+        }
+        const res = await fetch(`https://${this.shopDomain}/admin/api/2024-01${path}`, {
+            headers: {
+                'X-Shopify-Access-Token': this.token,
+                'Content-Type': 'application/json',
+            },
+        });
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`Shopify API error: ${res.status} ${text}`);
+        }
+        return res.json();
+    }
+
     async getProducts() {
-        // Placeholder: Implement Shopify Admin API logic here
-        return [
-            { id: 'shop_1', name: 'Shopify Product A', price: 15.00 },
-            { id: 'shop_2', name: 'Shopify Product B', price: 25.00 },
-        ];
+        const data: any = await this.request('/products.json?limit=50');
+        return data.products;
     }
 
     async getOrders() {
-        return [];
+        const data: any = await this.request('/orders.json?status=any&limit=50');
+        return data.orders;
     }
 
     async handleWebhook(payload: unknown) {
@@ -42,5 +59,56 @@ export class ShopifyService {
 
     async updateInventory(payload: unknown) {
         return this.broadcastInventory(payload);
+    }
+
+    async getInventoryLevels() {
+        const locations: any = await this.request('/locations.json');
+        const locationIds = locations.locations?.map((loc: any) => loc.id).join(',') || '';
+        if (!locationIds) return [];
+        const levels: any = await this.request(`/inventory_levels.json?location_ids=${locationIds}`);
+        return levels.inventory_levels || [];
+    }
+
+    async createWebhook(topic: string, address: string) {
+        const payload = {
+            webhook: {
+                topic,
+                address,
+                format: 'json',
+            },
+        };
+        const res = await fetch(`https://${this.shopDomain}/admin/api/2024-01/webhooks.json`, {
+            method: 'POST',
+            headers: {
+                'X-Shopify-Access-Token': this.token || '',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`Shopify webhook error: ${res.status} ${text}`);
+        }
+        return res.json();
+    }
+
+    async listWebhooks() {
+        const data: any = await this.request('/webhooks.json');
+        return data.webhooks || [];
+    }
+
+    async ensureWebhook(topic: string, address: string) {
+        const existing = await this.listWebhooks();
+        const match = existing.find((hook: any) => hook.topic === topic && hook.address === address);
+        if (match) {
+            return match;
+        }
+        const created: any = await this.createWebhook(topic, address);
+        return created.webhook;
+    }
+
+    async getShop() {
+        const data: any = await this.request('/shop.json');
+        return data.shop;
     }
 }

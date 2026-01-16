@@ -10,12 +10,25 @@ interface WebhookEvent {
   receivedAt: string;
 }
 
+interface WebhookSubscription {
+  id: number;
+  integrationId: number;
+  topic: string;
+  status: string;
+  lastError?: string | null;
+  updatedAt: string;
+}
+
 export default function WebhooksPage() {
   const [events, setEvents] = useState<WebhookEvent[]>([]);
+  const [subscriptions, setSubscriptions] = useState<WebhookSubscription[]>([]);
 
   useEffect(() => {
     authFetch("/webhooks")
       .then((data) => setEvents(Array.isArray(data) ? data : []))
+      .catch(() => null);
+    authFetch("/webhooks/subscriptions")
+      .then((data) => setSubscriptions(data?.subscriptions || []))
       .catch(() => null);
   }, []);
 
@@ -39,6 +52,24 @@ export default function WebhooksPage() {
             </div>
           ))}
           {events.length === 0 && <p className="py-6 text-sm text-slate-500">No webhooks yet.</p>}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-6">
+        <div className="text-sm font-semibold text-slate-600">Webhook Status by Store</div>
+        <div className="mt-4 space-y-2 text-sm text-slate-600">
+          {subscriptions.map((sub) => (
+            <div key={sub.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
+              <div>
+                <div className="font-medium text-slate-800">{sub.topic}</div>
+                {sub.lastError && <div className="text-xs text-amber-600">{sub.lastError}</div>}
+              </div>
+              <span className={sub.status === "ACTIVE" ? "text-emerald-600" : "text-amber-600"}>
+                {sub.status}
+              </span>
+            </div>
+          ))}
+          {subscriptions.length === 0 && <p className="text-slate-500">No subscriptions yet.</p>}
         </div>
       </div>
     </div>

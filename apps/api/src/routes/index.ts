@@ -10,6 +10,7 @@ import workersRouter from '../workers/router';
 import adaptersRouter from '../adapters/router';
 import labelsRouter from '../labels/router';
 import { authMiddleware } from '../middleware/auth';
+import shopifyMarketplaceRouter from '../marketplaces/shopify/router';
 
 const router = Router();
 
@@ -25,6 +26,7 @@ router.use('/inventory', inventoryRouter);
 router.use('/workers', workersRouter);
 router.use('/adapters', adaptersRouter);
 router.use('/labels', labelsRouter);
+router.use('/marketplaces/shopify', shopifyMarketplaceRouter);
 
 router.get('/', (req: Request, res: Response) => {
     res.json({ message: 'Welcome to LaCleoOmnia API' });

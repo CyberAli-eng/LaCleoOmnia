@@ -38,8 +38,12 @@ Base router: `apps/api/src/routes/index.ts`
 | GET | `/api/auth/status` | Validate JWT + return user |
 | POST | `/api/config` | Save integration config |
 | GET | `/api/config/me` | List integrations for the authenticated user |
+| GET | `/api/config/status` | Integrations + webhook status |
+| PATCH | `/api/config/:id` | Update integration settings |
 | GET | `/api/webhooks` | List webhook events |
 | POST | `/api/webhooks/:source` | Receive marketplace webhook |
+| GET | `/api/webhooks/subscriptions` | List webhook subscriptions |
+| POST | `/api/webhooks/register/:integrationId` | Re-register webhooks |
 | GET | `/api/orders` | List orders |
 | POST | `/api/orders` | Create order (unified payload) |
 | GET | `/api/inventory` | Inventory counts |
@@ -50,6 +54,10 @@ Base router: `apps/api/src/routes/index.ts`
 | POST | `/api/workers/inventory-sync` | Enqueue inventory sync job |
 | GET | `/api/labels` | List labels |
 | POST | `/api/labels/generate` | Generate label (stub) |
+| GET | `/api/marketplaces/shopify/orders` | Shopify orders |
+| GET | `/api/marketplaces/shopify/products` | Shopify products |
+| GET | `/api/marketplaces/shopify/inventory` | Shopify inventory |
+| GET | `/api/marketplaces/shopify/shop` | Shopify shop info |
 
 ### Authentication
 `apps/api/src/auth/router.ts`
@@ -81,6 +89,8 @@ Base router: `apps/api/src/routes/index.ts`
 Recommended env vars:
 - `GOOGLE_CLIENT_ID` (API) and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (web)
 - `REDIS_URL`
+- `WEBHOOK_BASE_URL` (public API base for webhook registration)
+- `SHOPIFY_WEBHOOK_SECRET` (optional fallback; prefer per-store app secret in UI)
 - `S3_ENDPOINT` (MinIO) or leave empty for AWS
 - `S3_REGION`
 - `S3_ACCESS_KEY_ID`
