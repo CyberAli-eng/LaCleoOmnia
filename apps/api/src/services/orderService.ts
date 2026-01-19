@@ -18,7 +18,7 @@ export interface UnifiedOrder {
     rawPayload?: unknown;
 }
 
-export async function createUnifiedOrder(order: UnifiedOrder) {
+export async function createUnifiedOrder(order: UnifiedOrder, userId: number) {
     return prisma.$transaction(async (tx) => {
         const created = await (tx as typeof prisma & Record<string, any>).order.create({
             data: {
@@ -28,6 +28,7 @@ export async function createUnifiedOrder(order: UnifiedOrder) {
                 total: order.total ?? null,
                 currency: order.currency ?? null,
                 payload: order.rawPayload ? JSON.stringify(order.rawPayload) : null,
+                userId,
                 items: {
                     create: order.items.map((item) => ({
                         sku: item.sku,
@@ -41,7 +42,7 @@ export async function createUnifiedOrder(order: UnifiedOrder) {
         });
 
         for (const item of order.items) {
-            await adjustInventory(item.sku, -item.quantity, 'order_created');
+            await adjustInventory(item.sku, -item.quantity, 'order_created', userId);
         }
 
         return created;

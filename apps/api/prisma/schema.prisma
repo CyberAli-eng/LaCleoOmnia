@@ -15,6 +15,12 @@ model User {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   integrations Integration[]
+  orders    Order[]
+  products  Product[]
+  inventory Inventory[]
+  labels    Label[]
+  workerJobs WorkerJob[]
+  webhookEvents WebhookEvent[]
 }
 
 model Integration {
@@ -37,6 +43,8 @@ model WebhookEvent {
   source      String
   eventType   String?
   payload     String
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id])
   receivedAt  DateTime @default(now())
   processedAt DateTime?
 }
@@ -63,7 +71,10 @@ model Order {
   total      Float?
   currency   String?
   payload    String?
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
   items      OrderItem[]
+  labels     Label[]
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
@@ -80,18 +91,26 @@ model OrderItem {
 
 model Product {
   id        Int      @id @default(autoincrement())
-  sku       String   @unique
+  sku       String
   name      String?
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([userId, sku])
 }
 
 model Inventory {
   id        Int      @id @default(autoincrement())
-  sku       String   @unique
+  sku       String
   quantity  Int
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([userId, sku])
 }
 
 model InventoryLog {
@@ -99,6 +118,7 @@ model InventoryLog {
   sku       String
   delta     Int
   reason    String
+  userId    Int?
   createdAt DateTime @default(now())
 }
 
@@ -123,6 +143,8 @@ model WorkerJob {
   payload   String?
   attempts  Int      @default(0)
   lastError String?
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -130,6 +152,9 @@ model WorkerJob {
 model Label {
   id        Int      @id @default(autoincrement())
   orderId   Int?
+  order     Order?   @relation(fields: [orderId], references: [id])
   url       String
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
 }

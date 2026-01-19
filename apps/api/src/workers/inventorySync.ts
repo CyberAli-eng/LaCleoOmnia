@@ -15,6 +15,7 @@ const worker = new Worker(
                 where: { id: Number(integrationId) },
             });
             if (integration) {
+                const userId = integration.userId;
                 const creds = JSON.parse(decryptCredentials(integration.credentials));
                 const shopDomain = creds.shopDomain || creds.domain || creds.shop;
                 const token = creds.accessToken || creds.token || creds.adminToken;
@@ -25,9 +26,9 @@ const worker = new Worker(
                         const skuKey = `shopify:${level.inventory_item_id}`;
                         const quantity = Number(level.available ?? 0);
                         await prisma.inventory.upsert({
-                            where: { sku: skuKey },
+                            where: { userId_sku: { userId, sku: skuKey } },
                             update: { quantity },
-                            create: { sku: skuKey, quantity },
+                            create: { sku: skuKey, quantity, userId },
                         });
                     }
                 }

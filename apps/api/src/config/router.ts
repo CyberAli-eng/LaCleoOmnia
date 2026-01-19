@@ -185,104 +185,99 @@ router.get('/status', async (req: Request, res: Response) => {
 });
 
 router.patch('/:id', async (req: Request, res: Response) => {
-    const userId = (req as Request & { user?: { id: number } }).user?.id;
-    if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        const userId = (req as Request & { user?: { id: number } }).user?.id;
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const integrationId = Number(req.params.id);
+        if (!integrationId) {
+            return res.status(400).json({ error: 'Invalid integration id' });
+        }
+        // Verify ownership
+        const existing = await prisma.integration.findFirst({
+            where: { id: integrationId, userId },
+        });
+        if (!existing) {
+            return res.status(404).json({ error: 'Integration not found' });
+        }
+        const { name, inventorySyncEnabled, inventorySyncIntervalMinutes } = req.body || {};
+        const prismaAny = prisma as any;
+        const integration = await prismaAny.integration.update({
+            where: { id: integrationId },
+            data: {
+                name: typeof name === 'string' ? name : undefined,
+                inventorySyncEnabled: typeof inventorySyncEnabled === 'boolean' ? inventorySyncEnabled : undefined,
+                inventorySyncIntervalMinutes: typeof inventorySyncIntervalMinutes === 'number' ? inventorySyncIntervalMinutes : undefined,
+            },
+        });
+        res.json(integration);
+    } catch (error: any) {
+        res.status(500).json({ error: 'Failed to update integration', details: error.message });
     }
-    const integrationId = Number(req.params.id);
-    if (!integrationId) {
-        return res.status(400).json({ error: 'Invalid integration id' });
-    }
-    const { name, inventorySyncEnabled, inventorySyncIntervalMinutes } = req.body || {};
-    const prismaAny = prisma as any;
-    const integration = await prismaAny.integration.update({
-        where: { id: integrationId },
-        data: {
-            name: typeof name === 'string' ? name : undefined,
-            inventorySyncEnabled: typeof inventorySyncEnabled === 'boolean' ? inventorySyncEnabled : undefined,
-            inventorySyncIntervalMinutes: typeof inventorySyncIntervalMinutes === 'number' ? inventorySyncIntervalMinutes : undefined,
-        },
-    });
-    res.json(integration);
-});
-
-router.delete('/:id', async (req: Request, res: Response) => {
-    const userId = (req as Request & { user?: { id: number } }).user?.id;
-    if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const integrationId = Number(req.params.id);
-    if (!integrationId) {
-        return res.status(400).json({ error: 'Invalid integration id' });
-    }
-    const integration = await prisma.integration.findFirst({
-        where: { id: integrationId, userId },
-    });
-    if (!integration) {
-        return res.status(404).json({ error: 'Integration not found' });
-    }
-    await prisma.webhookSubscription.deleteMany({
-        where: { integrationId },
-    });
-    await prisma.integration.delete({
-        where: { id: integrationId },
-    });
-    res.json({ ok: true });
 });
 
 router.post('/cleanup', async (req: Request, res: Response) => {
-    const userId = (req as Request & { user?: { id: number } }).user?.id;
-    if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const integrations = await prisma.integration.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-    });
-    const keep = new Set<string>();
-    const toDelete: number[] = [];
-    for (const item of integrations) {
-        const nameKey = String(item.name || '').trim().toLowerCase();
-        const key = `${item.type}:${nameKey}`;
-        if (keep.has(key)) {
-            toDelete.push(item.id);
-        } else {
-            keep.add(key);
+    try {
+        const userId = (req as Request & { user?: { id: number } }).user?.id;
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized' });
         }
-    }
-    if (toDelete.length) {
-        await prisma.webhookSubscription.deleteMany({
-            where: { integrationId: { in: toDelete } },
+        const integrations = await prisma.integration.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'desc' },
         });
-        await prisma.integration.deleteMany({
-            where: { id: { in: toDelete } },
-        });
+        const keep = new Set<string>();
+        const toDelete: number[] = [];
+        for (const item of integrations) {
+            const nameKey = String(item.name || '').trim().toLowerCase();
+            const key = `${item.type}:${nameKey}`;
+            if (keep.has(key)) {
+                toDelete.push(item.id);
+            } else {
+                keep.add(key);
+            }
+        }
+        if (toDelete.length) {
+            await prisma.webhookSubscription.deleteMany({
+                where: { integrationId: { in: toDelete } },
+            });
+            await prisma.integration.deleteMany({
+                where: { id: { in: toDelete } },
+            });
+        }
+        res.json({ ok: true, deleted: toDelete.length });
+    } catch (error: any) {
+        res.status(500).json({ error: 'Failed to cleanup integrations', details: error.message });
     }
-    res.json({ ok: true, deleted: toDelete.length });
 });
 
 router.delete('/:id', async (req: Request, res: Response) => {
-    const userId = (req as Request & { user?: { id: number } }).user?.id;
-    if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        const userId = (req as Request & { user?: { id: number } }).user?.id;
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const integrationId = Number(req.params.id);
+        if (!integrationId) {
+            return res.status(400).json({ error: 'Invalid integration id' });
+        }
+        const integration = await prisma.integration.findFirst({
+            where: { id: integrationId, userId },
+        });
+        if (!integration) {
+            return res.status(404).json({ error: 'Integration not found' });
+        }
+        await prisma.webhookSubscription.deleteMany({
+            where: { integrationId },
+        });
+        await prisma.integration.delete({
+            where: { id: integrationId },
+        });
+        res.json({ ok: true });
+    } catch (error: any) {
+        res.status(500).json({ error: 'Failed to delete integration', details: error.message });
     }
-    const integrationId = Number(req.params.id);
-    if (!integrationId) {
-        return res.status(400).json({ error: 'Invalid integration id' });
-    }
-    const integration = await prisma.integration.findFirst({
-        where: { id: integrationId, userId },
-    });
-    if (!integration) {
-        return res.status(404).json({ error: 'Integration not found' });
-    }
-    await prisma.webhookSubscription.deleteMany({
-        where: { integrationId },
-    });
-    await prisma.integration.delete({
-        where: { id: integrationId },
-    });
-    res.json({ ok: true });
 });
 
 export default router;

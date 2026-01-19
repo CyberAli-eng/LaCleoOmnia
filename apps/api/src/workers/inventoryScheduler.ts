@@ -19,6 +19,7 @@ async function runScheduler() {
                     type: 'inventory_sync',
                     status: 'PENDING',
                     payload: JSON.stringify({ source: 'SHOPIFY', integrationId: integration.id }),
+                    userId: integration.userId,
                 },
             });
             await inventorySyncQueue.add(

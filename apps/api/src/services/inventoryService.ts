@@ -14,23 +14,26 @@ async function releaseLock(key: string) {
     await redis.del(lockKey);
 }
 
-export async function adjustInventory(sku: string, delta: number, reason: string) {
-    const locked = await acquireLock(sku);
+export async function adjustInventory(sku: string, delta: number, reason: string, userId: number) {
+    const lockKey = `${userId}:${sku}`;
+    const locked = await acquireLock(lockKey);
     if (!locked) {
         throw new Error(`Inventory lock busy for ${sku}`);
     }
 
     try {
-        const current = await prisma.inventory.findUnique({ where: { sku } });
+        const current = await prisma.inventory.findUnique({ 
+            where: { userId_sku: { userId, sku } } 
+        });
         const nextQty = (current?.quantity ?? 0) + delta;
         if (nextQty < 0) {
             throw new Error(`Insufficient inventory for ${sku}`);
         }
 
         const inventory = await prisma.inventory.upsert({
-            where: { sku },
+            where: { userId_sku: { userId, sku } },
             update: { quantity: nextQty },
-            create: { sku, quantity: nextQty },
+            create: { sku, quantity: nextQty, userId },
         });
 
         await prisma.inventoryLog.create({
@@ -38,11 +41,12 @@ export async function adjustInventory(sku: string, delta: number, reason: string
                 sku,
                 delta,
                 reason,
+                userId,
             },
         });
 
         return inventory;
     } finally {
-        await releaseLock(sku);
+        await releaseLock(lockKey);
     }
 }
