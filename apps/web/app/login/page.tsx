@@ -88,12 +88,12 @@ export default function LoginPage() {
                 body: JSON.stringify({ email, password }),
             });
 
-            const data = await res.json();
-
             if (!res.ok) {
-                console.error("Login failed:", data);
-                throw new Error(data.error || "Login failed");
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || `Login failed: ${res.status} ${res.statusText}`);
             }
+
+            const data = await res.json();
 
             // Store token (MVP approach)
             localStorage.setItem("token", data.token);
@@ -101,8 +101,17 @@ export default function LoginPage() {
 
             router.push("/dashboard");
         } catch (err: any) {
-            console.error("Login Catch:", err);
-            setError(err.message);
+            console.error("Login error:", err);
+            let errorMessage = err.message || "Login failed";
+            
+            // Provide helpful error messages
+            if (errorMessage.includes("fetch") || errorMessage.includes("Network")) {
+                errorMessage = "Cannot connect to server. Please check your internet connection and try again.";
+            } else if (errorMessage.includes("127.0.0.1") || errorMessage.includes("localhost")) {
+                errorMessage = "API URL not configured. Please contact support.";
+            }
+            
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }

@@ -1,25 +1,61 @@
+// Get API URL from environment variables
+// In production, this MUST be set in Vercel environment variables
 export const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    'http://127.0.0.1:4000/api';
+    (typeof window !== 'undefined' 
+        ? 'http://127.0.0.1:4000/api' // Fallback for local development
+        : 'http://127.0.0.1:4000/api');
+
+// Validate API URL in production
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
+    if (!process.env.NEXT_PUBLIC_API_BASE_URL && !process.env.NEXT_PUBLIC_API_URL) {
+        console.error(
+            '⚠️ NEXT_PUBLIC_API_URL is not set! ' +
+            'Please set it in Vercel environment variables. ' +
+            'Current API URL:', API_BASE_URL
+        );
+    }
+}
 
 export async function fetchFromApi(path: string, init?: RequestInit) {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
-        cache: 'no-store',
-        ...init,
-    });
+    const url = `${API_BASE_URL}${path}`;
+    
+    try {
+        const res = await fetch(url, {
+            cache: 'no-store',
+            ...init,
+        });
 
-    if (!res.ok) {
-        try {
-            const data = await res.json();
-            throw new Error(data?.error || data?.message || 'Failed to fetch data');
-        } catch {
-            const text = await res.text();
-            throw new Error(text || 'Failed to fetch data');
+        if (!res.ok) {
+            try {
+                const data = await res.json();
+                throw new Error(data?.error || data?.message || `Request failed with status ${res.status}`);
+            } catch (err: any) {
+                if (err instanceof Error && err.message.includes('Request failed')) {
+                    throw err;
+                }
+                const text = await res.text();
+                throw new Error(text || `Request failed with status ${res.status}`);
+            }
         }
-    }
 
-    return res.json();
+        return res.json();
+    } catch (error: any) {
+        // Provide more helpful error messages
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+            const apiUrl = API_BASE_URL;
+            if (apiUrl.includes('127.0.0.1') || apiUrl.includes('localhost')) {
+                throw new Error(
+                    'Cannot connect to API. ' +
+                    'Please set NEXT_PUBLIC_API_URL in Vercel environment variables. ' +
+                    `Current API URL: ${apiUrl}`
+                );
+            }
+            throw new Error(`Network error: Unable to reach API at ${apiUrl}. ${error.message}`);
+        }
+        throw error;
+    }
 }
 
 export function getAuthHeaders(): HeadersInit {
