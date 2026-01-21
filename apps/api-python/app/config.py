@@ -1,0 +1,88 @@
+"""
+Application configuration with automatic environment detection
+"""
+import os
+from typing import List
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class Settings:
+    """Application settings with automatic environment detection"""
+    
+    # Environment detection
+    ENV = os.getenv("ENV", "DEV").upper()
+    IS_PRODUCTION = ENV == "PROD" or ENV == "PRODUCTION"
+    IS_DEVELOPMENT = not IS_PRODUCTION
+    
+    # Auto-detect if running on Render/Vercel/Heroku/Railway
+    # Render sets RENDER=true, Vercel sets VERCEL=true, Heroku sets DYNO, Railway sets RAILWAY_ENVIRONMENT
+    RENDER = os.getenv("RENDER", "").lower() == "true" or "render.com" in os.getenv("RENDER_EXTERNAL_URL", "")
+    VERCEL = os.getenv("VERCEL", "").lower() == "true"
+    HEROKU = bool(os.getenv("DYNO"))
+    RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT"))
+    IS_CLOUD = RENDER or VERCEL or HEROKU or RAILWAY
+    
+    # Server configuration
+    HOST = os.getenv("HOST", "0.0.0.0" if IS_CLOUD else "127.0.0.1")
+    PORT = int(os.getenv("PORT", 8000))
+    
+    # Database
+    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:password@localhost:5432/lacleo_omnia?schema=public")
+    
+    # Authentication
+    JWT_SECRET = os.getenv("JWT_SECRET", "supersecret_fallback_key_change_in_production")
+    AUTH_ALGORITHM = os.getenv("AUTH_ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 7))  # 7 days
+    
+    # Encryption
+    ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "your-32-character-encryption-key!!")
+    
+    # CORS - Dynamic based on environment
+    @property
+    def ALLOWED_ORIGINS(self) -> List[str]:
+        """Get allowed CORS origins based on environment"""
+        origins = []
+        
+        # Development origins
+        if self.IS_DEVELOPMENT:
+            origins.extend([
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:3001",
+            ])
+        
+        # Production origins from environment
+        env_origins = os.getenv("ALLOWED_ORIGINS", "")
+        if env_origins:
+            origins.extend([origin.strip() for origin in env_origins.split(",") if origin.strip()])
+        
+        return origins
+    
+    @property
+    def CORS_ORIGIN_REGEX(self) -> str:
+        """Get CORS origin regex pattern"""
+        if self.IS_PRODUCTION:
+            # Allow all Vercel deployments in production
+            return r"https://.*\.vercel\.app"
+        return r"http://localhost:\d+|http://127\.0\.0\.1:\d+"
+    
+    # Webhooks
+    WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
+    
+    # Logging
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO" if IS_PRODUCTION else "DEBUG")
+    
+    # API Configuration
+    API_PREFIX = "/api"
+    API_V1_PREFIX = "/api/v1"
+    
+    # Security
+    ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",") if os.getenv("ALLOWED_HOSTS") else ["*"]
+    
+    def __str__(self):
+        return f"Settings(ENV={self.ENV}, IS_PRODUCTION={self.IS_PRODUCTION}, IS_CLOUD={self.IS_CLOUD})"
+
+# Global settings instance
+settings = Settings()

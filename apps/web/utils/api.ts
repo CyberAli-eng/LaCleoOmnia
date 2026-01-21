@@ -1,11 +1,18 @@
 // Get API URL from environment variables
 // In production, this MUST be set in Vercel environment variables
-export const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    (typeof window !== 'undefined' 
-        ? 'http://127.0.0.1:4000/api' // Fallback for local development
-        : 'http://127.0.0.1:4000/api');
+// Use consistent value for both server and client to avoid hydration issues
+const getApiBaseUrl = () => {
+    if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+        return process.env.NEXT_PUBLIC_API_BASE_URL;
+    }
+    if (process.env.NEXT_PUBLIC_API_URL) {
+        return process.env.NEXT_PUBLIC_API_URL;
+    }
+    // Default fallback for local development - Python FastAPI backend
+    return 'http://127.0.0.1:8000/api';
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 // Validate API URL in production
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {

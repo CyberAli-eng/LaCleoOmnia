@@ -1,0 +1,307 @@
+"""
+Order routes
+"""
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from typing import Optional
+from datetime import datetime
+from app.database import get_db
+from app.models import Order, OrderItem, OrderStatus, User, FulfillmentStatus, Warehouse, Inventory, InventoryMovement, InventoryMovementType, Channel
+from app.auth import get_current_user
+from app.schemas import OrderResponse, ShipOrderRequest
+from decimal import Decimal
+
+router = APIRouter()
+
+@router.get("", response_model=dict)
+async def list_orders(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    channel: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """List orders with filters"""
+    query = db.query(Order)
+    
+    if status_filter and status_filter != "all":
+        query = query.filter(Order.status == status_filter)
+    
+    if channel:
+        query = query.join(Order.channel).filter(Channel.name == channel)
+    
+    if q:
+        query = query.filter(
+            or_(
+                Order.channel_order_id.contains(q),
+                Order.customer_name.contains(q),
+                Order.customer_email.contains(q)
+            )
+        )
+    
+    orders = query.order_by(Order.created_at.desc()).limit(100).all()
+    
+    result = []
+    for order in orders:
+        items = db.query(OrderItem).filter(OrderItem.order_id == order.id).all()
+        result.append({
+            "id": order.id,
+            "channelOrderId": order.channel_order_id,
+            "customerName": order.customer_name,
+            "customerEmail": order.customer_email,
+            "paymentMode": order.payment_mode.value,
+            "orderTotal": float(order.order_total),
+            "status": order.status.value,
+            "createdAt": order.created_at.isoformat(),
+            "items": [
+                {
+                    "id": item.id,
+                    "sku": item.sku,
+                    "title": item.title,
+                    "qty": item.qty,
+                    "price": float(item.price),
+                    "fulfillmentStatus": item.fulfillment_status.value
+                }
+                for item in items
+            ]
+        })
+    
+    return {"orders": result}
+
+@router.get("/{order_id}")
+async def get_order(
+    order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get order details"""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    items = db.query(OrderItem).filter(OrderItem.order_id == order.id).all()
+    
+    return {
+        "order": {
+            "id": order.id,
+            "channelOrderId": order.channel_order_id,
+            "customerName": order.customer_name,
+            "customerEmail": order.customer_email,
+            "paymentMode": order.payment_mode.value,
+            "orderTotal": float(order.order_total),
+            "status": order.status.value,
+            "createdAt": order.created_at.isoformat(),
+            "items": [
+                {
+                    "id": item.id,
+                    "sku": item.sku,
+                    "title": item.title,
+                    "qty": item.qty,
+                    "price": float(item.price),
+                    "fulfillmentStatus": item.fulfillment_status.value,
+                    "variantId": item.variant_id
+                }
+                for item in items
+            ]
+        }
+    }
+
+@router.post("/{order_id}/confirm")
+async def confirm_order(
+    order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Confirm order"""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order.status not in [OrderStatus.NEW, OrderStatus.HOLD]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot confirm order in {order.status.value} status"
+        )
+    
+    # Check all items are mapped
+    items = db.query(OrderItem).filter(OrderItem.order_id == order.id).all()
+    unmapped_items = [item for item in items if item.fulfillment_status == FulfillmentStatus.UNMAPPED_SKU]
+    
+    if unmapped_items:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot confirm order with unmapped SKUs",
+            extra={"unmappedSkus": [item.sku for item in unmapped_items]}
+        )
+    
+    # Check stock availability
+    warehouse = db.query(Warehouse).filter(Warehouse.name == "Main Warehouse").first()
+    if not warehouse:
+        raise HTTPException(status_code=500, detail="Default warehouse not found")
+    
+    for item in items:
+        if not item.variant_id:
+            continue
+        
+        inventory = db.query(Inventory).filter(
+            Inventory.warehouse_id == warehouse.id,
+            Inventory.variant_id == item.variant_id
+        ).first()
+        
+        available_qty = (inventory.total_qty if inventory else 0) - (inventory.reserved_qty if inventory else 0)
+        
+        if available_qty < item.qty:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient stock for SKU {item.sku}. Available: {available_qty}, Required: {item.qty}"
+            )
+    
+    # Update order status
+    order.status = OrderStatus.CONFIRMED
+    db.commit()
+    db.refresh(order)
+    
+    return {"order": order}
+
+@router.post("/{order_id}/pack")
+async def pack_order(
+    order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Pack order"""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order.status != OrderStatus.CONFIRMED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order must be CONFIRMED to pack. Current status: {order.status.value}"
+        )
+    
+    order.status = OrderStatus.PACKED
+    db.commit()
+    db.refresh(order)
+    
+    return {"order": order}
+
+@router.post("/{order_id}/ship")
+async def ship_order(
+    order_id: str,
+    request: ShipOrderRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Ship order"""
+    from app.models import Shipment, ShipmentStatus
+    
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order.status != OrderStatus.PACKED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order must be PACKED to ship. Current status: {order.status.value}"
+        )
+    
+    warehouse = db.query(Warehouse).filter(Warehouse.name == "Main Warehouse").first()
+    if not warehouse:
+        raise HTTPException(status_code=500, detail="Default warehouse not found")
+    
+    # Update order status
+    order.status = OrderStatus.SHIPPED
+    
+    # Create shipment
+    shipment = Shipment(
+        order_id=order_id,
+        courier_name=request.courier_name,
+        awb_number=request.awb_number,
+        tracking_url=request.tracking_url,
+        label_url=request.label_url,
+        status=ShipmentStatus.SHIPPED,
+        shipped_at=datetime.utcnow()
+    )
+    db.add(shipment)
+    
+    # Decrement inventory
+    items = db.query(OrderItem).filter(OrderItem.order_id == order_id).all()
+    for item in items:
+        if not item.variant_id:
+            continue
+        
+        inventory = db.query(Inventory).filter(
+            Inventory.warehouse_id == warehouse.id,
+            Inventory.variant_id == item.variant_id
+        ).first()
+        
+        if inventory:
+            inventory.total_qty -= item.qty
+            inventory.reserved_qty -= item.qty
+        
+        # Log movement
+        movement = InventoryMovement(
+            warehouse_id=warehouse.id,
+            variant_id=item.variant_id,
+            type=InventoryMovementType.OUT,
+            qty=item.qty,
+            reference=order_id
+        )
+        db.add(movement)
+    
+    db.commit()
+    
+    return {"order": order, "shipment": shipment}
+
+@router.post("/{order_id}/cancel")
+async def cancel_order(
+    order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Cancel order"""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order.status in [OrderStatus.SHIPPED, OrderStatus.DELIVERED]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel order in {order.status.value} status"
+        )
+    
+    warehouse = db.query(Warehouse).filter(Warehouse.name == "Main Warehouse").first()
+    if not warehouse:
+        raise HTTPException(status_code=500, detail="Default warehouse not found")
+    
+    # Release reserved inventory
+    items = db.query(OrderItem).filter(OrderItem.order_id == order_id).all()
+    for item in items:
+        if not item.variant_id:
+            continue
+        
+        inventory = db.query(Inventory).filter(
+            Inventory.warehouse_id == warehouse.id,
+            Inventory.variant_id == item.variant_id
+        ).first()
+        
+        if inventory:
+            inventory.reserved_qty -= item.qty
+        
+        # Log movement
+        movement = InventoryMovement(
+            warehouse_id=warehouse.id,
+            variant_id=item.variant_id,
+            type=InventoryMovementType.RELEASE,
+            qty=item.qty,
+            reference=order_id
+        )
+        db.add(movement)
+    
+    # Update order status
+    order.status = OrderStatus.CANCELLED
+    db.commit()
+    
+    return {"order": order}

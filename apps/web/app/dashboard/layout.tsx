@@ -19,11 +19,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const [userName, setUserName] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const token = localStorage.getItem("token");
     if (!token) {
       router.push("/login");
+      return;
     }
     const stored = localStorage.getItem("user");
     if (stored) {
@@ -66,7 +69,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="border-b border-slate-200 bg-white px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold text-slate-900">
-                Seller Portal{userName ? ` · ${userName}` : ""}
+                Seller Portal{mounted && userName ? ` · ${userName}` : ""}
               </div>
               <button
                 className="text-sm font-semibold text-slate-600 hover:text-blue-600"

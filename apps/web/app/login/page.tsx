@@ -10,29 +10,33 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
-    const [googleClientId, setGoogleClientId] = useState<string | null>(
-        process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null
-    );
+    const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+    const [mounted, setMounted] = useState(false);
     const router = useRouter();
 
     useEffect(() => {
+        setMounted(true);
         const token = localStorage.getItem("token");
         if (token) {
             router.replace("/dashboard");
         }
+        // Initialize Google Client ID after mount to avoid hydration mismatch
+        const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null;
+        setGoogleClientId(clientId);
     }, [router]);
 
     useEffect(() => {
+        if (!mounted) return;
         if (!googleClientId) {
             fetch("/api/env")
                 .then((res) => res.json())
                 .then((data) => setGoogleClientId(data.googleClientId || null))
                 .catch(() => null);
         }
-    }, [googleClientId]);
+    }, [googleClientId, mounted]);
 
     useEffect(() => {
-        if (!googleClientId) return;
+        if (!mounted || !googleClientId) return;
         const scriptId = "google-identity-script";
         if (document.getElementById(scriptId)) return;
 
@@ -68,13 +72,24 @@ export default function LoginPage() {
                     }
                 },
             });
-            google.accounts.id.renderButton(
-                document.getElementById("google-signin"),
-                { theme: "outline", size: "large", width: "360" }
-            );
+            const buttonElement = document.getElementById("google-signin");
+            if (buttonElement) {
+                google.accounts.id.renderButton(
+                    buttonElement,
+                    { theme: "outline", size: "large", width: "360" }
+                );
+            }
         };
         document.body.appendChild(script);
-    }, [googleClientId, router]);
+        
+        return () => {
+            // Cleanup script on unmount
+            const existingScript = document.getElementById(scriptId);
+            if (existingScript) {
+                existingScript.remove();
+            }
+        };
+    }, [googleClientId, router, mounted]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -84,13 +99,23 @@ export default function LoginPage() {
         try {
             const res = await fetch(`${API_BASE_URL}/auth/login`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                },
                 body: JSON.stringify({ email, password }),
             });
 
             if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || `Login failed: ${res.status} ${res.statusText}`);
+                let errorMessage = `Login failed: ${res.status} ${res.statusText}`;
+                try {
+                    const data = await res.json();
+                    errorMessage = data.detail || data.error || errorMessage;
+                } catch {
+                    const text = await res.text().catch(() => "");
+                    if (text) errorMessage = text;
+                }
+                throw new Error(errorMessage);
             }
 
             const data = await res.json();
@@ -128,14 +153,14 @@ export default function LoginPage() {
                         Sign in with email or Google.
                     </p>
                 </div>
-                <form className="mt-8 space-y-6" onSubmit={handleSubmit} suppressHydrationWarning>
+                <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
                     {error && (
                         <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
                             {error}
                         </div>
                     )}
                     <div className="space-y-4 rounded-md shadow-sm">
-                        <div suppressHydrationWarning>
+                        <div>
                             <label htmlFor="email-address" className="block text-sm font-medium text-slate-700 mb-1">Email address</label>
                             <input
                                 id="email-address"
@@ -143,14 +168,13 @@ export default function LoginPage() {
                                 type="email"
                                 autoComplete="email"
                                 required
-                                suppressHydrationWarning
                                 className="relative block w-full rounded-lg border-0 py-3 text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
                                 placeholder="Email address"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                             />
                         </div>
-                        <div suppressHydrationWarning>
+                        <div>
                             <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">Password</label>
                             <input
                                 id="password"
@@ -158,7 +182,6 @@ export default function LoginPage() {
                                 type="password"
                                 autoComplete="current-password"
                                 required
-                                suppressHydrationWarning
                                 className="relative block w-full rounded-lg border-0 py-3 text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
                                 placeholder="Password"
                                 value={password}

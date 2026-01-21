@@ -57,14 +57,14 @@ export default function RegisterPage() {
             Start syncing orders and inventory across marketplaces.
           </p>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit} suppressHydrationWarning>
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
             <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
               {error}
             </div>
           )}
           <div className="space-y-4 rounded-md shadow-sm">
-            <div suppressHydrationWarning>
+            <div>
               <label htmlFor="name" className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
               <input
                 id="name"
@@ -72,14 +72,13 @@ export default function RegisterPage() {
                 type="text"
                 autoComplete="name"
                 required
-                suppressHydrationWarning
                 className="relative block w-full rounded-lg border-0 py-3 text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
                 placeholder="Full Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
-            <div suppressHydrationWarning>
+            <div>
               <label htmlFor="email-address" className="block text-sm font-medium text-slate-700 mb-1">Email address</label>
               <input
                 id="email-address"
@@ -87,14 +86,13 @@ export default function RegisterPage() {
                 type="email"
                 autoComplete="email"
                 required
-                suppressHydrationWarning
                 className="relative block w-full rounded-lg border-0 py-3 text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
-            <div suppressHydrationWarning>
+            <div>
               <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">Password</label>
               <input
                 id="password"
@@ -102,14 +100,13 @@ export default function RegisterPage() {
                 type="password"
                 autoComplete="new-password"
                 required
-                suppressHydrationWarning
                 className="relative block w-full rounded-lg border-0 py-3 text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <div suppressHydrationWarning>
+            <div>
               <label htmlFor="confirm-password" className="block text-sm font-medium text-slate-700 mb-1">Confirm Password</label>
               <input
                 id="confirm-password"
@@ -117,7 +114,6 @@ export default function RegisterPage() {
                 type="password"
                 autoComplete="new-password"
                 required
-                suppressHydrationWarning
                 className="relative block w-full rounded-lg border-0 py-3 text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
                 placeholder="Confirm Password"
                 value={confirmPassword}
