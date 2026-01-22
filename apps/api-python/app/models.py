@@ -290,3 +290,27 @@ class Label(Base):
     
     order = relationship("Order")
     user = relationship("User")
+
+class AuditLogAction(str, enum.Enum):
+    ORDER_CREATED = "ORDER_CREATED"
+    ORDER_CONFIRMED = "ORDER_CONFIRMED"
+    ORDER_PACKED = "ORDER_PACKED"
+    ORDER_SHIPPED = "ORDER_SHIPPED"
+    ORDER_CANCELLED = "ORDER_CANCELLED"
+    INVENTORY_ADJUSTED = "INVENTORY_ADJUSTED"
+    SHIPMENT_CREATED = "SHIPMENT_CREATED"
+    INTEGRATION_CONNECTED = "INTEGRATION_CONNECTED"
+    INTEGRATION_DISCONNECTED = "INTEGRATION_DISCONNECTED"
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column("user_id", String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action = Column(SQLEnum(AuditLogAction), nullable=False)
+    entity_type = Column("entity_type", String, nullable=False)  # e.g., "Order", "Inventory", "Shipment"
+    entity_id = Column("entity_id", String, nullable=False)
+    details = Column(JSON, nullable=True)  # Additional context
+    created_at = Column("created_at", DateTime, server_default=func.now())
+    
+    user = relationship("User")

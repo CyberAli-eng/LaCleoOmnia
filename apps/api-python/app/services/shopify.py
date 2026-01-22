@@ -166,3 +166,50 @@ class ShopifyService:
             )
             response.raise_for_status()
             return response.json()
+    
+    async def get_locations(self) -> list:
+        """Get locations from Shopify"""
+        if not self.account or not self.base_url:
+            raise ValueError("ShopifyService must be initialized with account for this method")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/locations.json",
+                headers=self.headers,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("locations", [])
+    
+    async def get_products_count(self) -> int:
+        """Get total products count from Shopify"""
+        if not self.account or not self.base_url:
+            raise ValueError("ShopifyService must be initialized with account for this method")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/products/count.json",
+                headers=self.headers,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("count", 0)
+    
+    async def get_recent_orders(self, limit: int = 10) -> list:
+        """Get recent orders from Shopify"""
+        if not self.account or not self.base_url:
+            raise ValueError("ShopifyService must be initialized with account for this method")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/orders.json",
+                params={
+                    "status": "any",
+                    "limit": limit,
+                    "order": "created_at desc"
+                },
+                headers=self.headers,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("orders", [])

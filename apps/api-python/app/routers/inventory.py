@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.database import get_db
-from app.models import Inventory, Warehouse, ProductVariant, InventoryMovement, InventoryMovementType, User
+from app.models import Inventory, Warehouse, ProductVariant, InventoryMovement, InventoryMovementType, User, AuditLog, AuditLogAction
 from app.auth import get_current_user
 from app.schemas import InventoryAdjustRequest, InventoryResponse
 
@@ -101,6 +101,23 @@ async def adjust_inventory(
     db.add(movement)
     db.commit()
     db.refresh(inventory)
+    
+    # Log audit event
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action=AuditLogAction.INVENTORY_ADJUSTED,
+        entity_type="Inventory",
+        entity_id=inventory.id,
+        details={
+            "sku": request.sku,
+            "warehouse_id": request.warehouse_id,
+            "qty_delta": request.qty_delta,
+            "reason": request.reason,
+            "new_total_qty": inventory.total_qty
+        }
+    )
+    db.add(audit_log)
+    db.commit()
     
     return {
         "inventory": {

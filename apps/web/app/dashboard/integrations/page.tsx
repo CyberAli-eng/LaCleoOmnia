@@ -2,188 +2,122 @@
 
 import { useEffect, useState } from "react";
 import { authFetch } from "@/utils/api";
+import Link from "next/link";
 
-const integrationTypes = ["SHOPIFY", "AMAZON", "WOO", "FLIPKART", "SHIPPING"];
+const CHANNELS = [
+  { type: "SHOPIFY", name: "Shopify", icon: "🛍️", color: "blue" },
+  { type: "AMAZON", name: "Amazon", icon: "📦", color: "amber" },
+  { type: "FLIPKART", name: "Flipkart", icon: "🛒", color: "purple" },
+  { type: "MYNTRA", name: "Myntra", icon: "👕", color: "pink" },
+];
 
 export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<any[]>([]);
-  const [subscriptions, setSubscriptions] = useState<any[]>([]);
-  const [status, setStatus] = useState<string | null>(null);
-  const [statusType, setStatusType] = useState<"success" | "error" | "info">("info");
+  const [syncJobs, setSyncJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
-  const [type, setType] = useState("SHOPIFY");
-  const [name, setName] = useState("");
-  const [credentials, setCredentials] = useState("{}");
+  const [status, setStatus] = useState<string | null>(null);
+  const [statusType, setStatusType] = useState<"success" | "error">("success");
+  const [showConnectForm, setShowConnectForm] = useState<string | null>(null);
+  
+  // Shopify form state
   const [shopDomain, setShopDomain] = useState("");
   const [shopToken, setShopToken] = useState("");
-  const [shopSecret, setShopSecret] = useState("");
-  const [expandedIntegration, setExpandedIntegration] = useState<number | null>(null);
+  const [sellerName, setSellerName] = useState("");
 
-  const loadIntegrations = async () => {
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
     try {
-      const data = await authFetch("/config/status");
-      const raw = data?.integrations || [];
-      const seen = new Set<string>();
-      const deduped = raw.filter((item: any) => {
-        const nameKey = String(item.name || "").trim().toLowerCase();
-        const key = `${item.type}:${nameKey}`.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      setIntegrations(deduped);
-      setSubscriptions(data?.subscriptions || []);
-    } catch (err: any) {
-      setStatus(err.message);
-      setStatusType("error");
+      const [configData, jobsData] = await Promise.all([
+        authFetch("/config/status").catch(() => ({ integrations: [] })),
+        authFetch("/sync/jobs").catch(() => ({ jobs: [] })),
+      ]);
+      setIntegrations(configData?.integrations || []);
+      setSyncJobs(jobsData?.jobs || []);
+    } catch (err) {
+      console.error("Failed to load data:", err);
     }
   };
 
-  useEffect(() => {
-    loadIntegrations().catch((err) => setStatus(err.message));
-  }, []);
+  const getLastSync = (channelType: string) => {
+    const integration = integrations.find((i) => i.type === channelType);
+    if (!integration) return null;
+    const job = syncJobs
+      .filter((j) => j.channelAccountId === integration.id)
+      .sort((a, b) => new Date(b.finishedAt || b.startedAt || 0).getTime() - new Date(a.finishedAt || a.startedAt || 0).getTime())[0];
+    return job?.finishedAt || job?.startedAt || null;
+  };
 
-  const handleSave = async () => {
+  const handleConnectShopify = async () => {
+    if (!shopDomain || !shopToken || !sellerName) {
+      setStatus("Please fill all fields");
+      setStatusType("error");
+      return;
+    }
+    setLoading("connect");
     setStatus(null);
-    setLoading("save");
     try {
-      if (type === "SHOPIFY" && (!shopDomain || !shopToken)) {
-        throw new Error("Shop Domain and Admin Token are required");
-      }
-      const payloadCredentials =
-        type === "SHOPIFY"
-          ? { shopDomain, accessToken: shopToken, appSecret: shopSecret }
-          : JSON.parse(credentials);
-      const res = await authFetch("/config", {
+      await authFetch("/channels/shopify/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type,
-          name: name || `${type} Store`,
-          credentials: payloadCredentials,
+          seller_name: sellerName,
+          shop_domain: shopDomain,
+          access_token: shopToken,
         }),
       });
-      if (!res?.id) {
-        throw new Error("Failed to save integration");
-      }
-      setStatus(res.message || "Integration saved successfully!");
+      setStatus("✅ Shopify connected successfully!");
       setStatusType("success");
-      setName("");
-      setCredentials("{}");
+      setShowConnectForm(null);
       setShopDomain("");
       setShopToken("");
-      setShopSecret("");
-      await loadIntegrations();
+      setSellerName("");
+      await loadData();
     } catch (err: any) {
-      setStatus(err.message);
+      setStatus(`❌ Connection failed: ${err.message || "Unknown error"}`);
       setStatusType("error");
     } finally {
       setLoading(null);
     }
   };
 
-  const getWebhookHealth = (integrationId: number) => {
-    const subs = subscriptions.filter((sub) => sub.integrationId === integrationId);
-    if (!subs.length) return { status: "Not configured", count: 0, total: 0 };
-    const active = subs.filter((sub) => sub.status === "ACTIVE").length;
-    const failed = subs.filter((sub) => sub.status !== "ACTIVE").length;
-    return {
-      status: failed > 0 ? "Issues" : "Healthy",
-      count: active,
-      total: subs.length,
-      subscriptions: subs,
-    };
-  };
-
-  const handleTestConnection = async (integrationId: number) => {
-    setStatus(null);
+  const handleTestConnection = async (integrationId: string) => {
     setLoading(`test-${integrationId}`);
-    try {
-      const integration = integrations.find((i) => i.id === integrationId);
-      if (!integration || integration.type !== "SHOPIFY") {
-        throw new Error("Connection test only available for Shopify integrations");
-      }
-      const data = await authFetch(`/marketplaces/shopify/shop?integrationId=${integrationId}`);
-      setStatus(`✅ Connected to ${data.name || data.domain || "Shopify store"}`);
-      setStatusType("success");
-    } catch (err: any) {
-      setStatus(`❌ Connection failed: ${err.message}`);
-      setStatusType("error");
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const handleReRegister = async (integrationId: number) => {
     setStatus(null);
-    setLoading(`reregister-${integrationId}`);
     try {
-      await authFetch(`/webhooks/register/${integrationId}`, { method: "POST" });
-      await loadIntegrations();
-      setStatus("✅ Webhooks re-registered successfully");
-      setStatusType("success");
-    } catch (err: any) {
-      setStatus(`❌ Failed to re-register webhooks: ${err.message}`);
-      setStatusType("error");
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const updateSchedule = async (integrationId: number, enabled: boolean, interval: number) => {
-    setLoading(`schedule-${integrationId}`);
-    try {
-      await authFetch(`/config/${integrationId}`, {
-        method: "PATCH",
+      const result = await authFetch("/channels/shopify/test", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inventorySyncEnabled: enabled,
-          inventorySyncIntervalMinutes: interval,
-        }),
+        body: JSON.stringify({ accountId: integrationId }),
       });
-      await loadIntegrations();
-      setStatus(`✅ Inventory sync ${enabled ? "enabled" : "disabled"} (${interval}m interval)`);
+      setStatus(
+        `✅ Connected! Shop: ${result.shop?.name || "Unknown"}, Products: ${result.productsCount || 0}, Locations: ${result.locations?.length || 0}`
+      );
       setStatusType("success");
-      setTimeout(() => setStatus(null), 3000);
     } catch (err: any) {
-      setStatus(`❌ Failed to update schedule: ${err.message}`);
+      setStatus(`❌ Test failed: ${err.message || "Unknown error"}`);
       setStatusType("error");
     } finally {
       setLoading(null);
     }
   };
 
-  const handleDelete = async (integrationId: number) => {
-    if (!confirm("Are you sure you want to delete this integration? This will also remove all associated webhooks.")) {
-      return;
-    }
+  const handleImportOrders = async (integrationId: string) => {
+    setLoading(`import-${integrationId}`);
     setStatus(null);
-    setLoading(`delete-${integrationId}`);
     try {
-      await authFetch(`/config/${integrationId}`, { method: "DELETE" });
-      await loadIntegrations();
-      setStatus("✅ Integration deleted successfully");
+      await authFetch("/channels/shopify/import-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: integrationId }),
+      });
+      setStatus("✅ Orders imported successfully!");
       setStatusType("success");
-      setTimeout(() => setStatus(null), 3000);
+      await loadData();
     } catch (err: any) {
-      setStatus(`❌ Failed to delete: ${err.message}`);
-      setStatusType("error");
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const handleCleanupDuplicates = async () => {
-    setStatus(null);
-    setLoading("cleanup");
-    try {
-      const res = await authFetch("/config/cleanup", { method: "POST" });
-      await loadIntegrations();
-      setStatus(`✅ Cleaned up ${res.deleted || 0} duplicate integration(s)`);
-      setStatusType("success");
-      setTimeout(() => setStatus(null), 3000);
-    } catch (err: any) {
-      setStatus(`❌ Cleanup failed: ${err.message}`);
+      setStatus(`❌ Import failed: ${err.message || "Unknown error"}`);
       setStatusType("error");
     } finally {
       setLoading(null);
@@ -192,218 +126,177 @@ export default function IntegrationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="text-xl font-semibold text-slate-900">Integrations</h2>
-        <p className="mt-2 text-sm text-slate-600">Manage marketplace credentials and adapter setup.</p>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
-        <div className="grid gap-4 md:grid-cols-3">
-          <div>
-            <label className="text-sm font-medium text-slate-600">Type</label>
-            <select
-              value={type}
-              onChange={(event) => setType(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            >
-              {integrationTypes.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-600">Name</label>
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Store name"
-            />
-          </div>
-          {type === "SHOPIFY" ? (
-            <>
-              <div>
-                <label className="text-sm font-medium text-slate-600">Shop Domain</label>
-                <input
-                  value={shopDomain}
-                  onChange={(event) => setShopDomain(event.target.value)}
-                  placeholder="your-store.myshopify.com"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-600">Admin Access Token</label>
-                <input
-                  value={shopToken}
-                  onChange={(event) => setShopToken(event.target.value)}
-                  placeholder="shpat_..."
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-600">App Secret (Webhook HMAC)</label>
-                <input
-                  value={shopSecret}
-                  onChange={(event) => setShopSecret(event.target.value)}
-                  placeholder="shpss_..."
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </div>
-            </>
-          ) : (
-            <div className="md:col-span-1">
-              <label className="text-sm font-medium text-slate-600">Credentials (JSON)</label>
-              <input
-                value={credentials}
-                onChange={(event) => setCredentials(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono"
-              />
-            </div>
-          )}
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Integrations</h1>
+          <p className="mt-1 text-sm text-slate-600">Connect your marketplaces and sync orders</p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={loading === "save"}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading === "save" ? "Saving..." : "Save Integration"}
-        </button>
-        {status && (
-          <div className={`mt-2 rounded-lg px-3 py-2 text-sm ${
-            statusType === "error" ? "bg-red-50 text-red-700" :
-            statusType === "success" ? "bg-emerald-50 text-emerald-700" :
-            "bg-blue-50 text-blue-700"
-          }`}>
-            {status}
-          </div>
-        )}
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="text-sm font-semibold text-slate-600">Connected Integrations</div>
-        <div className="mt-4 space-y-2 text-sm">
-          {integrations.map((item) => {
-            const webhookHealth = getWebhookHealth(item.id);
-            const isExpanded = expandedIntegration === item.id;
-            return (
-            <div key={item.id} className="rounded-lg border border-slate-200 px-4 py-4 space-y-3 hover:border-slate-300 transition-colors">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-slate-900">{item.name || item.type}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{item.type}</span>
-                  </div>
-                  <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
-                    {item.createdAt && (
-                      <span>Created {new Date(item.createdAt).toLocaleDateString()}</span>
-                    )}
-                    {item.lastInventorySyncAt && (
-                      <span>• Last sync: {new Date(item.lastInventorySyncAt).toLocaleString()}</span>
-                    )}
+      {/* Status Message */}
+      {status && (
+        <div
+          className={`rounded-lg p-4 ${
+            statusType === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
+          }`}
+        >
+          {status}
+        </div>
+      )}
+
+      {/* Channel Cards */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {CHANNELS.map((channel) => {
+          const integration = integrations.find((i) => i.type === channel.type);
+          const isConnected = integration?.status === "CONNECTED";
+          const lastSync = getLastSync(channel.type);
+
+          return (
+            <div
+              key={channel.type}
+              className="rounded-lg border border-slate-200 bg-white p-6 hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="text-3xl">{channel.icon}</div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">{channel.name}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      {isConnected ? (
+                        <>
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                            Connected
+                          </span>
+                          {integration.name && (
+                            <span className="text-xs text-slate-500">{integration.name}</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                          Not Connected
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => setExpandedIntegration(isExpanded ? null : item.id)}
-                  className="text-xs text-slate-500 hover:text-slate-700"
-                >
-                  {isExpanded ? "▼" : "▶"}
-                </button>
               </div>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span className={`rounded-full px-2.5 py-1 font-medium ${
-                  webhookHealth.status === "Healthy" ? "bg-emerald-50 text-emerald-700" :
-                  webhookHealth.status === "Issues" ? "bg-amber-50 text-amber-700" :
-                  "bg-slate-100 text-slate-600"
-                }`}>
-                  Webhooks: {webhookHealth.status} {webhookHealth.total > 0 && `(${webhookHealth.count}/${webhookHealth.total})`}
-                </span>
-                <span className={`rounded-full px-2.5 py-1 font-medium ${item.inventorySyncEnabled ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>
-                  Inventory Sync: {item.inventorySyncEnabled ? `On (${item.inventorySyncIntervalMinutes || 60}m)` : "Off"}
-                </span>
-              </div>
-              {isExpanded && webhookHealth.subscriptions && webhookHealth.subscriptions.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
-                  <div className="text-xs font-medium text-slate-600 mb-2">Webhook Subscriptions:</div>
-                  {webhookHealth.subscriptions.map((sub: any) => (
-                    <div key={sub.id} className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600">{sub.topic}</span>
-                      <span className={`px-2 py-0.5 rounded ${
-                        sub.status === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
-                      }`}>
-                        {sub.status}
-                      </span>
-                    </div>
-                  ))}
+
+              {isConnected && lastSync && (
+                <div className="mb-4 text-xs text-slate-500">
+                  Last sync: {new Date(lastSync).toLocaleString()}
                 </div>
               )}
-              <div className="flex flex-wrap gap-2">
-                {item.type === "SHOPIFY" && (
-                  <>
-                    <button
-                      onClick={() => handleTestConnection(item.id)}
-                      disabled={loading === `test-${item.id}`}
-                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading === `test-${item.id}` ? "Testing..." : "Test Connection"}
-                    </button>
-                    <button
-                      onClick={() => handleReRegister(item.id)}
-                      disabled={loading === `reregister-${item.id}`}
-                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading === `reregister-${item.id}` ? "Registering..." : "Re-register Webhooks"}
-                    </button>
-                  </>
-                )}
+
+              {isConnected ? (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => handleTestConnection(integration.id)}
+                    disabled={loading === `test-${integration.id}`}
+                    className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {loading === `test-${integration.id}` ? "Testing..." : "Test Connection"}
+                  </button>
+                  {channel.type === "SHOPIFY" && (
+                    <>
+                      <button
+                        onClick={() => handleImportOrders(integration.id)}
+                        disabled={loading === `import-${integration.id}`}
+                        className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {loading === `import-${integration.id}` ? "Importing..." : "Import Orders"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          // TODO: Push inventory
+                          alert("Push inventory feature coming soon");
+                        }}
+                        className="w-full rounded-lg border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                      >
+                        Push Inventory
+                      </button>
+                    </>
+                  )}
+                  <Link
+                    href="/dashboard/webhooks"
+                    className="block w-full text-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    View Logs
+                  </Link>
+                </div>
+              ) : (
                 <button
-                  onClick={() => updateSchedule(item.id, !item.inventorySyncEnabled, item.inventorySyncIntervalMinutes || 60)}
-                  disabled={loading === `schedule-${item.id}`}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setShowConnectForm(showConnectForm === channel.type ? null : channel.type)}
+                  className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                 >
-                  {loading === `schedule-${item.id}` ? "Updating..." : item.inventorySyncEnabled ? "Disable Sync" : "Enable Sync"}
+                  Connect {channel.name}
                 </button>
-                {item.inventorySyncEnabled && (
-                  <>
+              )}
+
+              {/* Connect Form */}
+              {showConnectForm === channel.type && channel.type === "SHOPIFY" && (
+                <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Seller Name
+                    </label>
+                    <input
+                      type="text"
+                      value={sellerName}
+                      onChange={(e) => setSellerName(e.target.value)}
+                      placeholder="My Store"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Shop Domain
+                    </label>
+                    <input
+                      type="text"
+                      value={shopDomain}
+                      onChange={(e) => setShopDomain(e.target.value)}
+                      placeholder="your-store.myshopify.com"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Admin API Access Token
+                    </label>
+                    <input
+                      type="password"
+                      value={shopToken}
+                      onChange={(e) => setShopToken(e.target.value)}
+                      placeholder="shpat_..."
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="flex gap-2">
                     <button
-                      onClick={() => updateSchedule(item.id, true, 30)}
-                      disabled={loading === `schedule-${item.id}`}
-                      className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={handleConnectShopify}
+                      disabled={loading === "connect"}
+                      className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                     >
-                      Set 30m
+                      {loading === "connect" ? "Connecting..." : "Connect"}
                     </button>
                     <button
-                      onClick={() => updateSchedule(item.id, true, 60)}
-                      disabled={loading === `schedule-${item.id}`}
-                      className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => {
+                        setShowConnectForm(null);
+                        setShopDomain("");
+                        setShopToken("");
+                        setSellerName("");
+                      }}
+                      className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50"
                     >
-                      Set 60m
+                      Cancel
                     </button>
-                  </>
-                )}
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  disabled={loading === `delete-${item.id}`}
-                  className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading === `delete-${item.id}` ? "Deleting..." : "Delete"}
-                </button>
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
-            );
-          })}
-          {integrations.length === 0 && <p className="text-slate-500">No integrations yet.</p>}
-        </div>
-        {integrations.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-slate-200">
-            <button
-              onClick={handleCleanupDuplicates}
-              disabled={loading === "cleanup"}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading === "cleanup" ? "Cleaning..." : "Clean Duplicate Integrations"}
-            </button>
-          </div>
-        )}
+          );
+        })}
       </div>
     </div>
   );

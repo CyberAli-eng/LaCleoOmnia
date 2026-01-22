@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from typing import Optional
 from datetime import datetime
 from app.database import get_db
-from app.models import Order, OrderItem, OrderStatus, User, FulfillmentStatus, Warehouse, Inventory, InventoryMovement, InventoryMovementType, Channel, ChannelAccount
+from app.models import Order, OrderItem, OrderStatus, User, FulfillmentStatus, Warehouse, Inventory, InventoryMovement, InventoryMovementType, Channel, ChannelAccount, AuditLog, AuditLogAction
 from app.auth import get_current_user
 from app.schemas import OrderResponse, ShipOrderRequest
 from decimal import Decimal
@@ -108,6 +108,10 @@ async def get_order(
     
     items = db.query(OrderItem).filter(OrderItem.order_id == order.id).all()
     
+    # Get shipment if exists
+    from app.models import Shipment
+    shipment = db.query(Shipment).filter(Shipment.order_id == order.id).first()
+    
     return {
         "order": {
             "id": order.id,
@@ -118,6 +122,7 @@ async def get_order(
             "orderTotal": float(order.order_total),
             "status": order.status.value,
             "createdAt": order.created_at.isoformat(),
+            "updatedAt": order.updated_at.isoformat() if order.updated_at else None,
             "items": [
                 {
                     "id": item.id,
@@ -129,7 +134,15 @@ async def get_order(
                     "variantId": item.variant_id
                 }
                 for item in items
-            ]
+            ],
+            "shipment": {
+                "courierName": shipment.courier_name,
+                "awbNumber": shipment.awb_number,
+                "trackingUrl": shipment.tracking_url,
+                "labelUrl": shipment.label_url,
+                "status": shipment.status.value,
+                "shippedAt": shipment.shipped_at.isoformat() if shipment.shipped_at else None,
+            } if shipment else None
         }
     }
 
@@ -188,6 +201,17 @@ async def confirm_order(
     db.commit()
     db.refresh(order)
     
+    # Log audit event
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action=AuditLogAction.ORDER_CONFIRMED,
+        entity_type="Order",
+        entity_id=order.id,
+        details={"previous_status": "NEW", "new_status": "CONFIRMED"}
+    )
+    db.add(audit_log)
+    db.commit()
+    
     return {"order": order}
 
 @router.post("/{order_id}/pack")
@@ -210,6 +234,17 @@ async def pack_order(
     order.status = OrderStatus.PACKED
     db.commit()
     db.refresh(order)
+    
+    # Log audit event
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action=AuditLogAction.ORDER_PACKED,
+        entity_type="Order",
+        entity_id=order.id,
+        details={"previous_status": "CONFIRMED", "new_status": "PACKED"}
+    )
+    db.add(audit_log)
+    db.commit()
     
     return {"order": order}
 
@@ -279,6 +314,25 @@ async def ship_order(
     
     db.commit()
     
+    # Log audit events
+    audit_log_order = AuditLog(
+        user_id=current_user.id,
+        action=AuditLogAction.ORDER_SHIPPED,
+        entity_type="Order",
+        entity_id=order.id,
+        details={"previous_status": "PACKED", "new_status": "SHIPPED", "courier": request.courier_name}
+    )
+    audit_log_shipment = AuditLog(
+        user_id=current_user.id,
+        action=AuditLogAction.SHIPMENT_CREATED,
+        entity_type="Shipment",
+        entity_id=shipment.id,
+        details={"awb_number": request.awb_number, "courier": request.courier_name}
+    )
+    db.add(audit_log_order)
+    db.add(audit_log_shipment)
+    db.commit()
+    
     return {"order": order, "shipment": shipment}
 
 @router.post("/{order_id}/cancel")
@@ -326,8 +380,23 @@ async def cancel_order(
         )
         db.add(movement)
     
+    # Get previous status for audit log
+    previous_status = order.status.value
+    
     # Update order status
     order.status = OrderStatus.CANCELLED
+    db.commit()
+    db.refresh(order)
+    
+    # Log audit event
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action=AuditLogAction.ORDER_CANCELLED,
+        entity_type="Order",
+        entity_id=order.id,
+        details={"previous_status": previous_status, "new_status": "CANCELLED"}
+    )
+    db.add(audit_log)
     db.commit()
     
     return {"order": order}

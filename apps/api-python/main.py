@@ -9,7 +9,7 @@ from fastapi import status
 import uvicorn
 import logging
 
-from app.routers import auth, channels, orders, inventory, products, warehouses, shipments, sync, config, webhooks, marketplaces, analytics, labels, workers
+from app.routers import auth, channels, orders, inventory, products, warehouses, shipments, sync, config, webhooks, marketplaces, analytics, labels, workers, audit, users
 from app.database import engine, Base
 from app.config import settings
 
@@ -141,6 +141,8 @@ app.include_router(marketplaces.router, prefix="/api/marketplaces", tags=["marke
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(labels.router, prefix="/api/labels", tags=["labels"])
 app.include_router(workers.router, prefix="/api/workers", tags=["workers"])
+app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
+app.include_router(users.router, prefix="/api/users", tags=["users"])
 
 @app.get("/health")
 async def health():
