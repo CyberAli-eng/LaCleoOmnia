@@ -2,38 +2,71 @@
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
+### Local Development Setup
+
+**For detailed local setup instructions, see:**
+- **[README_LOCAL.md](./README_LOCAL.md)** - Quick setup guide
+- **[LOCAL_SETUP.md](./LOCAL_SETUP.md)** - Detailed manual setup
+
+### Quick Setup (Automated)
 
 ```bash
 cd apps/api-python
+
+# 1. Setup PostgreSQL database (creates user, database, grants permissions)
+./setup_local_db.sh
+
+# 2. Copy environment file
+cp .env.example .env
+
+# 3. Install dependencies
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-### 2. Set Environment Variables
+# 4. Check database connection
+python check_db.py
 
-```bash
-cp .env.example .env
-# Edit .env and set DATABASE_URL
-```
-
-### 3. Initialize Database
-
-```bash
-# Create tables
-alembic upgrade head
-
-# Seed database
+# 5. Seed database (creates tables + initial data)
 python seed.py
+
+# 6. Run server
+python -m uvicorn main:app --reload
 ```
 
-### 4. Run Server
+### Manual Setup
 
-```bash
-python main.py
-# Or: uvicorn main:app --reload --port 4000
-```
+1. **Install PostgreSQL** (if not installed)
+   ```bash
+   # macOS
+   brew install postgresql@14
+   brew services start postgresql@14
+   
+   # Linux
+   sudo apt-get install postgresql postgresql-contrib
+   sudo systemctl start postgresql
+   ```
+
+2. **Create database** (or run `./setup_local_db.sh`)
+   ```bash
+   psql postgres
+   CREATE USER admin WITH PASSWORD 'password';
+   CREATE DATABASE lacleo_omnia OWNER admin;
+   GRANT ALL PRIVILEGES ON DATABASE lacleo_omnia TO admin;
+   \q
+   ```
+
+3. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env and set DATABASE_URL=postgresql://admin:password@localhost:5432/lacleo_omnia
+   ```
+
+4. **Install dependencies and seed**
+   ```bash
+   pip install -r requirements.txt
+   python seed.py
+   ```
 
 ## 📁 Project Structure
 

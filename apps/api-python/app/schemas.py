@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation
 """
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -13,13 +13,27 @@ from app.models import (
 
 # Auth Schemas
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str  # Changed from EmailStr to allow @local emails for development
     password: str
+    
+    @validator('email')
+    def validate_email(cls, v):
+        # Basic email validation that allows @local for development
+        if '@' not in v or len(v.split('@')) != 2:
+            raise ValueError('Invalid email format')
+        return v.lower().strip()
 
 class RegisterRequest(BaseModel):
-    email: EmailStr
+    email: str  # Changed from EmailStr to allow @local emails for development
     password: str
     name: str
+    
+    @validator('email')
+    def validate_email(cls, v):
+        # Basic email validation that allows @local for development
+        if '@' not in v or len(v.split('@')) != 2:
+            raise ValueError('Invalid email format')
+        return v.lower().strip()
 
 class LoginResponse(BaseModel):
     user: dict

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/api";
+import { setCookie } from "@/utils/cookies";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -27,20 +28,80 @@ export default function RegisterPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/auth/register`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name }),
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({ 
+          email: email.trim().toLowerCase(), 
+          password, 
+          name: name.trim() 
+        }),
       });
 
-      const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Registration failed");
+        let errorMessage = `Registration failed: ${res.status} ${res.statusText}`;
+        try {
+          const data = await res.json();
+          // Handle different error response formats
+          if (typeof data === 'string') {
+            errorMessage = data;
+          } else if (data.detail) {
+            // FastAPI validation errors can be arrays or strings
+            if (Array.isArray(data.detail)) {
+              errorMessage = data.detail.map((err: any) => {
+                const field = err.loc ? err.loc.slice(1).join('.') : 'field';
+                const msg = err.msg || err.message || 'Invalid value';
+                return `${field}: ${msg}`;
+              }).join(', ');
+            } else {
+              errorMessage = String(data.detail);
+            }
+          } else if (data.error) {
+            errorMessage = String(data.error);
+          } else if (data.message) {
+            errorMessage = String(data.message);
+          }
+        } catch (parseError) {
+          try {
+            const text = await res.text();
+            if (text) errorMessage = text;
+          } catch {
+            // Keep default error message
+          }
+        }
+        throw new Error(errorMessage);
       }
 
+      const data = await res.json();
+      
+      // Store token in both localStorage and cookies
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
-      router.push("/dashboard");
+      setCookie("token", data.token, 7); // 7 days
+      
+      router.replace("/dashboard");
     } catch (err: any) {
-      setError(err.message);
+      console.error("Registration error:", err);
+      let errorMessage = err.message || "Registration failed";
+      
+      // Handle object errors
+      if (typeof errorMessage === 'object') {
+        try {
+          errorMessage = JSON.stringify(errorMessage);
+        } catch {
+          errorMessage = "An error occurred. Please try again.";
+        }
+      }
+      
+      // Provide helpful error messages
+      if (errorMessage.includes("already registered") || errorMessage.includes("already exists")) {
+        errorMessage = "This email is already registered. Please login instead.";
+      } else if (errorMessage.includes("email")) {
+        errorMessage = "Please enter a valid email address.";
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

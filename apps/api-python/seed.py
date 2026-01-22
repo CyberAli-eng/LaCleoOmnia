@@ -84,6 +84,41 @@ def seed_database():
         db.close()
 
 if __name__ == "__main__":
+    print("🌱 Starting database seeding...")
+    print("")
+    
+    # Test database connection first
+    try:
+        print("🔌 Testing database connection...")
+        with engine.connect() as conn:
+            print("✅ Database connection successful!")
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
+        print("")
+        print("💡 Troubleshooting:")
+        print("   1. Make sure PostgreSQL is running:")
+        print("      macOS: brew services start postgresql@14")
+        print("      Linux: sudo systemctl start postgresql")
+        print("")
+        print("   2. Run the setup script:")
+        print("      ./setup_local_db.sh")
+        print("")
+        print("   3. Check your DATABASE_URL in .env file")
+        print("      Should be: postgresql://admin:password@localhost:5432/lacleo_omnia")
+        exit(1)
+    
+    print("")
+    
     # Create tables
-    Base.metadata.create_all(bind=engine)
+    try:
+        print("📦 Creating database tables...")
+        Base.metadata.create_all(bind=engine)
+        print("✅ Tables created!")
+    except Exception as e:
+        print(f"❌ Failed to create tables: {e}")
+        exit(1)
+    
+    print("")
+    
+    # Seed data
     seed_database()

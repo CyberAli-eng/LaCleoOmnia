@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { getCookie, deleteCookie } from "@/utils/cookies";
 
 const navItems = [
   { href: "/dashboard", label: "Overview" },
@@ -23,10 +24,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     setMounted(true);
-    const token = localStorage.getItem("token");
+    // Check both cookie and localStorage for token
+    const token = getCookie("token") || localStorage.getItem("token");
     if (!token) {
-      router.push("/login");
+      router.replace("/login");
       return;
+    }
+    // Sync token to localStorage if it's only in cookie
+    if (!localStorage.getItem("token") && token) {
+      localStorage.setItem("token", token);
     }
     const stored = localStorage.getItem("user");
     if (stored) {
@@ -76,7 +82,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 onClick={() => {
                   localStorage.removeItem("token");
                   localStorage.removeItem("user");
-                  router.push("/login");
+                  deleteCookie("token");
+                  router.replace("/login");
                 }}
               >
                 Logout

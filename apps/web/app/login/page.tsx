@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/api";
+import { setCookie, getCookie } from "@/utils/cookies";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
@@ -16,7 +17,8 @@ export default function LoginPage() {
 
     useEffect(() => {
         setMounted(true);
-        const token = localStorage.getItem("token");
+        // Check both cookie and localStorage for token
+        const token = getCookie("token") || localStorage.getItem("token");
         if (token) {
             router.replace("/dashboard");
         }
@@ -62,8 +64,10 @@ export default function LoginPage() {
                         });
                         const data = await res.json();
                         if (!res.ok) throw new Error(data.error || "Google login failed");
+                        // Store in both localStorage and cookies
                         localStorage.setItem("token", data.token);
                         localStorage.setItem("user", JSON.stringify(data.user));
+                        setCookie("token", data.token, 7); // 7 days
                         router.push("/dashboard");
                     } catch (err: any) {
                         setError(err.message);
@@ -96,6 +100,18 @@ export default function LoginPage() {
         setError("");
         setLoading(true);
 
+        // Basic client-side validation
+        if (!email || !email.trim()) {
+            setError("Please enter your email address");
+            setLoading(false);
+            return;
+        }
+        if (!password || !password.trim()) {
+            setError("Please enter your password");
+            setLoading(false);
+            return;
+        }
+
         try {
             const res = await fetch(`${API_BASE_URL}/auth/login`, {
                 method: "POST",
@@ -103,37 +119,84 @@ export default function LoginPage() {
                     "Content-Type": "application/json",
                     "Accept": "application/json"
                 },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ 
+                    email: email.trim().toLowerCase(), 
+                    password: password 
+                }),
             });
 
             if (!res.ok) {
                 let errorMessage = `Login failed: ${res.status} ${res.statusText}`;
                 try {
-                    const data = await res.json();
-                    errorMessage = data.detail || data.error || errorMessage;
-                } catch {
-                    const text = await res.text().catch(() => "");
-                    if (text) errorMessage = text;
+                    const data = await res.json();                    // Handle different error response formats
+                    if (typeof data === 'string') {
+                        errorMessage = data;
+                    } else if (data.detail) {
+                        // FastAPI validation errors can be arrays or strings
+                        if (Array.isArray(data.detail)) {
+                            // Parse Pydantic validation errors
+                            errorMessage = data.detail.map((err: any) => {
+                                const field = err.loc ? err.loc.slice(1).join('.') : 'field';
+                                const msg = err.msg || err.message || 'Invalid value';
+                                return `${field}: ${msg}`;
+                            }).join(', ');
+                        } else {
+                            errorMessage = String(data.detail);
+                        }
+                    } else if (data.error) {
+                        errorMessage = String(data.error);
+                    } else if (data.message) {
+                        errorMessage = String(data.message);
+                    } else {
+                        errorMessage = JSON.stringify(data);
+                    }
+                } catch (parseError) {
+                    // If JSON parsing fails, try to get text
+                    try {
+                        const text = await res.text();
+                        if (text) errorMessage = text;
+                    } catch {
+                        // Keep the default error message
+                    }
                 }
                 throw new Error(errorMessage);
             }
 
             const data = await res.json();
 
-            // Store token (MVP approach)
+            // Store token in both localStorage (for API calls) and cookies (for middleware)
             localStorage.setItem("token", data.token);
             localStorage.setItem("user", JSON.stringify(data.user));
+            setCookie("token", data.token, 7); // 7 days
 
-            router.push("/dashboard");
+            // Use replace to avoid back button issues
+            router.replace("/dashboard");
         } catch (err: any) {
             console.error("Login error:", err);
             let errorMessage = err.message || "Login failed";
             
+            // Handle object errors
+            if (typeof errorMessage === 'object') {
+                try {
+                    errorMessage = JSON.stringify(errorMessage);
+                } catch {
+                    errorMessage = "An error occurred. Please try again.";
+                }
+            }
+            
             // Provide helpful error messages
-            if (errorMessage.includes("fetch") || errorMessage.includes("Network")) {
+            if (errorMessage.includes("fetch") || errorMessage.includes("Network") || errorMessage.includes("Failed to fetch")) {
                 errorMessage = "Cannot connect to server. Please check your internet connection and try again.";
             } else if (errorMessage.includes("127.0.0.1") || errorMessage.includes("localhost")) {
                 errorMessage = "API URL not configured. Please contact support.";
+            } else if (errorMessage.includes("Invalid credentials") || errorMessage.includes("401")) {
+                errorMessage = "Invalid email or password. Please try again.";
+            } else if (errorMessage.includes("400") || errorMessage.includes("Bad Request")) {
+                if (errorMessage.includes("email") || errorMessage.includes("Email")) {
+                    errorMessage = "Please enter a valid email address.";
+                } else {
+                    errorMessage = "Invalid request. Please check your input and try again.";
+                }
             }
             
             setError(errorMessage);
