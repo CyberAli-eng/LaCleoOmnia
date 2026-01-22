@@ -3,8 +3,9 @@
 // Use consistent value for both server and client to avoid hydration issues
 const getApiBaseUrl = () => {
     // In development, always use localhost (unless explicitly overridden)
+    // Note: window is not available during build, so check NODE_ENV first
     const isDevelopment = process.env.NODE_ENV === 'development' || 
-                         (typeof window !== 'undefined' && window.location.hostname === 'localhost');
+                         (typeof window !== 'undefined' && window?.location?.hostname === 'localhost');
     
     // Check environment variables first
     if (process.env.NEXT_PUBLIC_API_BASE_URL) {

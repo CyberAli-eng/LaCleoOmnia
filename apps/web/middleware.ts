@@ -24,7 +24,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
   
-  // Block access to /api/auth/* routes (NextAuth routes that no longer exist)
+  // Block access to old /api/auth/* routes (except login/register which are handled by backend)
   if (path.startsWith('/api/auth/') && !path.startsWith('/api/auth/login') && !path.startsWith('/api/auth/register')) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
