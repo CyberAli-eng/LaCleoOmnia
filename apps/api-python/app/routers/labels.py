@@ -4,7 +4,7 @@ Label generation routes
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Order, User, Label
+from app.models import Order, User, Label, ChannelAccount
 from app.auth import get_current_user
 from pydantic import BaseModel
 from typing import Optional, List
@@ -54,10 +54,21 @@ async def generate_labels(
             detail="orderId or orderIds is required"
         )
     
-    orders = db.query(Order).filter(
-        Order.id.in_([str(oid) for oid in order_ids]),
-        Order.user_id == current_user.id
+    # Get channel accounts for the current user
+    channel_accounts = db.query(ChannelAccount).filter(
+        ChannelAccount.user_id == current_user.id
     ).all()
+    
+    channel_account_ids = [ca.id for ca in channel_accounts]
+    
+    # Get orders that belong to user's channel accounts
+    if channel_account_ids:
+        orders = db.query(Order).filter(
+            Order.id.in_([str(oid) for oid in order_ids]),
+            Order.channel_account_id.in_(channel_account_ids)
+        ).all()
+    else:
+        orders = []
     
     if len(orders) != len(order_ids):
         raise HTTPException(

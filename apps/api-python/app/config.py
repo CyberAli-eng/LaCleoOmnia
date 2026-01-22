@@ -2,7 +2,7 @@
 Application configuration with automatic environment detection
 """
 import os
-from typing import List
+from typing import List, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,13 +38,13 @@ class Settings:
     # Encryption
     ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "your-32-character-encryption-key!!")
     
-    # CORS - Dynamic based on environment
+    # CORS - Fully dynamic based on ALLOWED_ORIGINS environment variable
     @property
     def ALLOWED_ORIGINS(self) -> List[str]:
-        """Get allowed CORS origins based on environment"""
+        """Get allowed CORS origins - fully dynamic from environment variable"""
         origins = []
         
-        # Development origins
+        # Always add localhost origins in development (for local testing)
         if self.IS_DEVELOPMENT:
             origins.extend([
                 "http://localhost:3000",
@@ -53,20 +53,42 @@ class Settings:
                 "http://127.0.0.1:3001",
             ])
         
-        # Production origins from environment
+        # Add origins from ALLOWED_ORIGINS environment variable (comma-separated)
+        # This works for ANY platform - Vercel, Netlify, Cloudflare Pages, custom domains, etc.
         env_origins = os.getenv("ALLOWED_ORIGINS", "")
         if env_origins:
-            origins.extend([origin.strip() for origin in env_origins.split(",") if origin.strip()])
+            # Split by comma and clean up each origin
+            for origin in env_origins.split(","):
+                origin = origin.strip()
+                if origin:
+                    origins.append(origin)
         
-        return origins
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_origins = []
+        for origin in origins:
+            if origin not in seen:
+                seen.add(origin)
+                unique_origins.append(origin)
+        
+        return unique_origins
     
     @property
-    def CORS_ORIGIN_REGEX(self) -> str:
-        """Get CORS origin regex pattern"""
-        if self.IS_PRODUCTION:
-            # Allow all Vercel deployments in production
-            return r"https://.*\.vercel\.app"
-        return r"http://localhost:\d+|http://127\.0\.0\.1:\d+"
+    def CORS_ORIGIN_REGEX(self) -> Optional[str]:
+        """Get CORS origin regex pattern - optional, only if CORS_ORIGIN_REGEX env var is set"""
+        # Only use regex if explicitly provided via environment variable
+        # This allows flexibility for platforms that need regex patterns (e.g., preview deployments)
+        regex = os.getenv("CORS_ORIGIN_REGEX", "")
+        if regex:
+            return regex
+        
+        # Default: no regex pattern (use ALLOWED_ORIGINS only)
+        # In development, allow any localhost port for flexibility
+        if self.IS_DEVELOPMENT:
+            return r"http://localhost:\d+|http://127\.0\.0\.1:\d+"
+        
+        # In production, no regex by default - use ALLOWED_ORIGINS only
+        return None
     
     # Webhooks
     WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")

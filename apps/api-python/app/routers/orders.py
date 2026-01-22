@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from typing import Optional
 from datetime import datetime
 from app.database import get_db
-from app.models import Order, OrderItem, OrderStatus, User, FulfillmentStatus, Warehouse, Inventory, InventoryMovement, InventoryMovementType, Channel
+from app.models import Order, OrderItem, OrderStatus, User, FulfillmentStatus, Warehouse, Inventory, InventoryMovement, InventoryMovementType, Channel, ChannelAccount
 from app.auth import get_current_user
 from app.schemas import OrderResponse, ShipOrderRequest
 from decimal import Decimal
@@ -23,7 +23,21 @@ async def list_orders(
     current_user: User = Depends(get_current_user)
 ):
     """List orders with filters"""
-    query = db.query(Order)
+    # Get channel accounts for the current user
+    channel_accounts = db.query(ChannelAccount).filter(
+        ChannelAccount.user_id == current_user.id
+    ).all()
+    
+    channel_account_ids = [ca.id for ca in channel_accounts]
+    
+    # Start query with user's orders only
+    if channel_account_ids:
+        query = db.query(Order).filter(
+            Order.channel_account_id.in_(channel_account_ids)
+        )
+    else:
+        # No channel accounts, return empty result
+        return {"orders": []}
     
     if status_filter and status_filter != "all":
         query = query.filter(Order.status == status_filter)
@@ -76,9 +90,21 @@ async def get_order(
     current_user: User = Depends(get_current_user)
 ):
     """Get order details"""
+    # Get channel accounts for the current user
+    channel_accounts = db.query(ChannelAccount).filter(
+        ChannelAccount.user_id == current_user.id
+    ).all()
+    
+    channel_account_ids = [ca.id for ca in channel_accounts]
+    
+    # Check if order belongs to user
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Verify order belongs to current user
+    if order.channel_account_id not in channel_account_ids:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     items = db.query(OrderItem).filter(OrderItem.order_id == order.id).all()
     

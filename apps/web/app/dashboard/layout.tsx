@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { getCookie, deleteCookie } from "@/utils/cookies";
+import { getCookie, deleteCookie, setCookie } from "@/utils/cookies";
 
 const navItems = [
   { href: "/dashboard", label: "Overview" },
@@ -33,6 +33,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // Sync token to localStorage if it's only in cookie
     if (!localStorage.getItem("token") && token) {
       localStorage.setItem("token", token);
+    }
+    // Also sync cookie if token is only in localStorage
+    if (!getCookie("token") && token) {
+      setCookie("token", token, 7);
     }
     const stored = localStorage.getItem("user");
     if (stored) {

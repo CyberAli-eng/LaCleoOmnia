@@ -82,20 +82,46 @@ export async function fetchFromApi(path: string, init?: RequestInit) {
     }
 }
 
-export function getAuthHeaders(): HeadersInit {
+export function getAuthHeaders(): Record<string, string> {
     if (typeof window === 'undefined') {
         return {};
     }
-    const token = localStorage.getItem('token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    // Try to get token from both localStorage and cookies
+    const token = localStorage.getItem('token') || 
+                  (typeof document !== 'undefined' ? 
+                   document.cookie.split(';').find(c => c.trim().startsWith('token='))?.split('=')[1] : null);
+    
+    if (!token) {
+        console.warn('⚠️ No authentication token found');
+        return {};
+    }
+    
+    return { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    };
 }
 
 export async function authFetch(path: string, init?: RequestInit) {
+    const authHeaders = getAuthHeaders();
+    
+    // If no token, throw a clear error
+    if (!authHeaders['Authorization']) {
+        // Redirect to login if we're in the browser
+        if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+        }
+        throw new Error('Authentication required. Please login again.');
+    }
+    
     return fetchFromApi(path, {
         ...init,
         headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            ...authHeaders,
             ...(init?.headers || {}),
-            ...getAuthHeaders(),
         },
     });
 }
