@@ -68,6 +68,25 @@ export default function LandingPage() {
           </div>
         </div>
       </div>
+
+      {/* Footer with Legal Links */}
+      <footer className="bg-white border-t border-slate-200 py-8">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <p className="text-sm text-slate-500">
+              © {new Date().getFullYear()} LaCleoOmnia Inc. All rights reserved.
+            </p>
+            <div className="flex gap-6">
+              <Link href="/privacy" className="text-sm text-slate-600 hover:text-slate-900">
+                Privacy Policy
+              </Link>
+              <Link href="/terms" className="text-sm text-slate-600 hover:text-slate-900">
+                Terms of Service
+              </Link>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

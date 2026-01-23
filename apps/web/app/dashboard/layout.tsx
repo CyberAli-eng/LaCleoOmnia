@@ -192,6 +192,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 >
                   Quick Actions
                 </button>
+              <div className="flex items-center gap-4">
+                <Link href="/privacy" className="text-xs text-slate-500 hover:text-slate-700">
+                  Privacy
+                </Link>
+                <Link href="/terms" className="text-xs text-slate-500 hover:text-slate-700">
+                  Terms
+                </Link>
+              <div className="flex items-center gap-4">
+                <Link href="/privacy" className="text-xs text-slate-500 hover:text-slate-700 hidden sm:block">
+                  Privacy
+                </Link>
+                <Link href="/terms" className="text-xs text-slate-500 hover:text-slate-700 hidden sm:block">
+                  Terms
+                </Link>
                 <button
                   className="text-sm font-semibold text-slate-600 hover:text-blue-600"
                   onClick={() => {
@@ -203,6 +217,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 >
                   Logout
                 </button>
+              </div>
+              </div>
               </div>
             </div>
           </div>

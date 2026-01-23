@@ -45,9 +45,19 @@ export default function RootLayout({
               <div className="text-xl font-bold text-blue-600">
                 LaCleo<span className="text-slate-900">Omnia</span>
               </div>
-              <p className="text-sm text-slate-500">
-                © 2026 LaCleoOmnia Inc. All rights reserved.
-              </p>
+              <div className="flex flex-col items-center gap-4 md:flex-row">
+                <div className="flex gap-6">
+                  <Link href="/privacy" className="text-sm text-slate-500 hover:text-slate-900 transition-colors">
+                    Privacy Policy
+                  </Link>
+                  <Link href="/terms" className="text-sm text-slate-500 hover:text-slate-900 transition-colors">
+                    Terms of Service
+                  </Link>
+                </div>
+                <p className="text-sm text-slate-500">
+                  © {new Date().getFullYear()} LaCleoOmnia Inc. All rights reserved.
+                </p>
+              </div>
             </div>
           </div>
         </footer>
