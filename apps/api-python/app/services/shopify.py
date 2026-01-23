@@ -45,7 +45,7 @@ class ShopifyService:
             return data.get("shop", {})
     
     async def ensure_webhook(self, shop_domain: str, access_token: str, app_secret: str, webhook_base_url: str):
-        """Ensure webhooks are registered for inventory and products"""
+        """Ensure all required webhooks are registered"""
         # Handle both formats: "store.myshopify.com" or "store"
         if not shop_domain.endswith(".myshopify.com"):
             shop_domain = f"{shop_domain}.myshopify.com"
@@ -55,7 +55,33 @@ class ShopifyService:
             "Content-Type": "application/json"
         }
         
+        # All required webhooks as per requirements
         webhooks = [
+            {
+                "topic": "orders/create",
+                "address": f"{webhook_base_url}/api/webhooks/shopify",
+                "format": "json"
+            },
+            {
+                "topic": "orders/updated",
+                "address": f"{webhook_base_url}/api/webhooks/shopify",
+                "format": "json"
+            },
+            {
+                "topic": "orders/cancelled",
+                "address": f"{webhook_base_url}/api/webhooks/shopify",
+                "format": "json"
+            },
+            {
+                "topic": "refunds/create",
+                "address": f"{webhook_base_url}/api/webhooks/shopify",
+                "format": "json"
+            },
+            {
+                "topic": "fulfillments/create",
+                "address": f"{webhook_base_url}/api/webhooks/shopify",
+                "format": "json"
+            },
             {
                 "topic": "inventory_levels/update",
                 "address": f"{webhook_base_url}/api/webhooks/shopify",
@@ -63,11 +89,6 @@ class ShopifyService:
             },
             {
                 "topic": "products/update",
-                "address": f"{webhook_base_url}/api/webhooks/shopify",
-                "format": "json"
-            },
-            {
-                "topic": "orders/create",
                 "address": f"{webhook_base_url}/api/webhooks/shopify",
                 "format": "json"
             }
@@ -82,17 +103,51 @@ class ShopifyService:
             )
             response.raise_for_status()
             existing = response.json().get("webhooks", [])
-            existing_addresses = {w.get("address") for w in existing}
+            
+            # Create a map of existing webhooks by topic
+            existing_by_topic = {w.get("topic"): w for w in existing}
+            registered = []
+            errors = []
             
             # Register missing webhooks
             for webhook in webhooks:
-                if webhook["address"] not in existing_addresses:
-                    await client.post(
+                topic = webhook["topic"]
+                existing_webhook = existing_by_topic.get(topic)
+                
+                # Check if webhook exists and points to our URL
+                if existing_webhook and existing_webhook.get("address") == webhook["address"]:
+                    registered.append({"topic": topic, "status": "exists"})
+                    continue
+                
+                # Delete old webhook if it exists but points to different URL
+                if existing_webhook:
+                    try:
+                        await client.delete(
+                            f"{base_url}/webhooks/{existing_webhook['id']}.json",
+                            headers=headers,
+                            timeout=30.0
+                        )
+                    except:
+                        pass  # Ignore delete errors
+                
+                # Register new webhook
+                try:
+                    response = await client.post(
                         f"{base_url}/webhooks.json",
                         headers=headers,
                         json={"webhook": webhook},
                         timeout=30.0
                     )
+                    response.raise_for_status()
+                    registered.append({"topic": topic, "status": "registered"})
+                except Exception as e:
+                    errors.append({"topic": topic, "error": str(e)})
+            
+            return {
+                "registered": registered,
+                "errors": errors,
+                "total": len(webhooks)
+            }
     
     async def get_shop(self) -> dict:
         """Get shop information (requires account initialization)"""

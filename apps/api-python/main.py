@@ -143,6 +143,7 @@ app.include_router(labels.router, prefix="/api/labels", tags=["labels"])
 app.include_router(workers.router, prefix="/api/workers", tags=["workers"])
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
+app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 
 @app.get("/health")
 async def health():

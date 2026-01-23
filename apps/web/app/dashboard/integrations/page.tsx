@@ -225,12 +225,35 @@ export default function IntegrationsPage() {
                   </Link>
                 </div>
               ) : (
-                <button
-                  onClick={() => setShowConnectForm(showConnectForm === channel.type ? null : channel.type)}
-                  className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  Connect {channel.name}
-                </button>
+                <div className="space-y-2">
+                  {channel.type === "SHOPIFY" && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const result = await authFetch(`/channels/shopify/oauth/install?shop=${encodeURIComponent(prompt("Enter your shop domain (e.g., mystore or mystore.myshopify.com):") || "")}`);
+                          if (result.installUrl) {
+                            window.open(result.installUrl, "_blank");
+                            setStatus("✅ Redirecting to Shopify for OAuth installation...");
+                            setStatusType("success");
+                          }
+                        } catch (err: any) {
+                          setStatus(`❌ OAuth failed: ${err.message || "Please use manual connection"}`);
+                          setStatusType("error");
+                          setShowConnectForm(showConnectForm === channel.type ? null : channel.type);
+                        }
+                      }}
+                      className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                    >
+                      Connect via OAuth (Recommended)
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowConnectForm(showConnectForm === channel.type ? null : channel.type)}
+                    className="w-full rounded-lg border border-blue-600 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50"
+                  >
+                    {channel.type === "SHOPIFY" ? "Connect Manually" : `Connect ${channel.name}`}
+                  </button>
+                </div>
               )}
 
               {/* Connect Form */}

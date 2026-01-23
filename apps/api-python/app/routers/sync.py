@@ -1,77 +1,122 @@
 """
-Sync jobs and logs routes
+Sync routes for background synchronization
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import Optional
 from app.database import get_db
-from app.models import SyncJob, SyncLog, User, SyncJobStatus, SyncJobType, LogLevel
+from app.models import ChannelAccount, User
 from app.auth import get_current_user
+from app.services.sync_engine import SyncEngine
 
 router = APIRouter()
 
-@router.get("/jobs")
-async def list_sync_jobs(
-    status: Optional[str] = Query(None),
-    job_type: Optional[str] = Query(None, alias="jobType"),
+@router.post("/orders/{account_id}")
+async def sync_orders(
+    account_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """List sync jobs"""
-    query = db.query(SyncJob)
+    """Trigger order sync for a channel account"""
+    account = db.query(ChannelAccount).filter(
+        ChannelAccount.id == account_id,
+        ChannelAccount.user_id == current_user.id
+    ).first()
     
-    if status:
-        query = query.filter(SyncJob.status == status)
+    if not account:
+        raise HTTPException(status_code=404, detail="Channel account not found")
     
-    if job_type:
-        query = query.filter(SyncJob.job_type == job_type)
+    sync_engine = SyncEngine(db)
     
-    jobs = query.order_by(SyncJob.created_at.desc()).limit(100).all()
+    # Run sync in background
+    async def run_sync():
+        await sync_engine.sync_orders(account)
     
-    result = []
-    for job in jobs:
-        log_count = db.query(SyncLog).filter(SyncLog.sync_job_id == job.id).count()
-        result.append({
-            "id": job.id,
-            "channelAccountId": job.channel_account_id,
-            "jobType": job.job_type.value,
-            "status": job.status.value,
-            "startedAt": job.started_at.isoformat() if job.started_at else None,
-            "finishedAt": job.finished_at.isoformat() if job.finished_at else None,
-            "createdAt": job.created_at.isoformat() if job.created_at else None,
-            "logCount": log_count
-        })
-    
-    return {"jobs": result}
-
-@router.get("/logs")
-async def list_sync_logs(
-    job_id: Optional[str] = Query(None, alias="jobId"),
-    level: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """List sync logs"""
-    query = db.query(SyncLog)
-    
-    if job_id:
-        query = query.filter(SyncLog.sync_job_id == job_id)
-    
-    if level:
-        query = query.filter(SyncLog.level == level)
-    
-    logs = query.order_by(SyncLog.created_at.desc()).limit(500).all()
+    background_tasks.add_task(run_sync)
     
     return {
-        "logs": [
-            {
-                "id": log.id,
-                "syncJobId": log.sync_job_id,
-                "level": log.level.value,
-                "message": log.message,
-                "rawPayload": log.raw_payload,
-                "createdAt": log.created_at.isoformat() if log.created_at else None
-            }
-            for log in logs
-        ]
+        "message": "Order sync started",
+        "accountId": account_id
+    }
+
+@router.post("/inventory/{account_id}")
+async def sync_inventory(
+    account_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Trigger inventory sync for a channel account"""
+    account = db.query(ChannelAccount).filter(
+        ChannelAccount.id == account_id,
+        ChannelAccount.user_id == current_user.id
+    ).first()
+    
+    if not account:
+        raise HTTPException(status_code=404, detail="Channel account not found")
+    
+    sync_engine = SyncEngine(db)
+    
+    # Run sync in background
+    async def run_sync():
+        await sync_engine.sync_inventory(account)
+    
+    background_tasks.add_task(run_sync)
+    
+    return {
+        "message": "Inventory sync started",
+        "accountId": account_id
+    }
+
+@router.post("/reconcile/{account_id}")
+async def daily_reconciliation(
+    account_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Trigger daily full reconciliation"""
+    account = db.query(ChannelAccount).filter(
+        ChannelAccount.id == account_id,
+        ChannelAccount.user_id == current_user.id
+    ).first()
+    
+    if not account:
+        raise HTTPException(status_code=404, detail="Channel account not found")
+    
+    sync_engine = SyncEngine(db)
+    
+    # Run reconciliation in background
+    async def run_reconciliation():
+        await sync_engine.daily_reconciliation(account)
+    
+    background_tasks.add_task(run_reconciliation)
+    
+    return {
+        "message": "Daily reconciliation started",
+        "accountId": account_id
+    }
+
+@router.get("/history/{account_id}")
+async def get_sync_history(
+    account_id: str,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get sync history for a channel account"""
+    account = db.query(ChannelAccount).filter(
+        ChannelAccount.id == account_id,
+        ChannelAccount.user_id == current_user.id
+    ).first()
+    
+    if not account:
+        raise HTTPException(status_code=404, detail="Channel account not found")
+    
+    sync_engine = SyncEngine(db)
+    history = sync_engine.get_sync_history(account_id, limit)
+    
+    return {
+        "accountId": account_id,
+        "history": history
     }

@@ -1,15 +1,18 @@
 """
 Channel and integration routes
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Channel, ChannelAccount, ChannelType, ChannelAccountStatus, User, AuditLog, AuditLogAction
 from app.auth import get_current_user
 from app.schemas import ShopifyConnectRequest, ChannelAccountResponse
 from app.services.shopify import ShopifyService
+from app.services.shopify_oauth import ShopifyOAuthService
 from app.services.credentials import encrypt_token
+from app.config import settings
 import re
+import httpx
 
 router = APIRouter()
 
@@ -183,3 +186,161 @@ async def import_shopify_orders_endpoint(
     
     result = await import_shopify_orders(db, account)
     return result
+
+@router.get("/shopify/oauth/install")
+async def shopify_oauth_install(
+    shop: str = Query(..., description="Shop domain (e.g., mystore or mystore.myshopify.com)"),
+    redirect_uri: str = Query(None, description="Redirect URI after OAuth"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get Shopify OAuth install URL"""
+    if not settings.SHOPIFY_API_KEY or not settings.SHOPIFY_API_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="Shopify OAuth not configured. Please set SHOPIFY_API_KEY and SHOPIFY_API_SECRET"
+        )
+    
+    # Default redirect URI
+    if not redirect_uri:
+        # Use the webhook base URL or construct from request
+        base_url = settings.WEBHOOK_BASE_URL or "http://localhost:8000"
+        redirect_uri = f"{base_url}/api/channels/shopify/oauth/callback"
+    
+    oauth_service = ShopifyOAuthService()
+    install_url = oauth_service.get_install_url(shop, redirect_uri)
+    
+    return {
+        "installUrl": install_url,
+        "shop": shop,
+        "redirectUri": redirect_uri
+    }
+
+@router.get("/shopify/oauth/callback")
+async def shopify_oauth_callback(
+    shop: str = Query(...),
+    code: str = Query(None),
+    hmac: str = Query(None),
+    state: str = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Handle Shopify OAuth callback"""
+    if not settings.SHOPIFY_API_KEY or not settings.SHOPIFY_API_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="Shopify OAuth not configured"
+        )
+    
+    if not code:
+        raise HTTPException(
+            status_code=400,
+            detail="Authorization code not provided"
+        )
+    
+    # Verify HMAC (optional but recommended)
+    oauth_service = ShopifyOAuthService()
+    
+    # Exchange code for access token
+    try:
+        token_data = await oauth_service.exchange_code_for_token(shop, code)
+        access_token = token_data.get("access_token")
+        
+        if not access_token:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to get access token from Shopify"
+            )
+        
+        # Get shop info
+        shopify_service = ShopifyService()
+        shop_info = await shopify_service.get_shop_info(shop, access_token)
+        
+        # Normalize shop domain
+        normalized_domain = re.sub(r'^https?://', '', shop)
+        normalized_domain = re.sub(r'\.myshopify\.com$', '', normalized_domain, flags=re.IGNORECASE)
+        normalized_domain = normalized_domain.lower()
+        
+        # Get or create Shopify channel
+        channel = db.query(Channel).filter(Channel.name == ChannelType.SHOPIFY).first()
+        if not channel:
+            channel = Channel(name=ChannelType.SHOPIFY, is_active=True)
+            db.add(channel)
+            db.commit()
+            db.refresh(channel)
+        
+        # Check if account already exists
+        existing_account = db.query(ChannelAccount).filter(
+            ChannelAccount.shop_domain == normalized_domain,
+            ChannelAccount.user_id == current_user.id
+        ).first()
+        
+        if existing_account:
+            # Update existing account
+            existing_account.access_token = encrypt_token(access_token)
+            existing_account.status = ChannelAccountStatus.CONNECTED
+            account = existing_account
+        else:
+            # Create new account
+            account = ChannelAccount(
+                channel_id=channel.id,
+                user_id=current_user.id,
+                seller_name=shop_info.get("name", normalized_domain),
+                shop_domain=normalized_domain,
+                access_token=encrypt_token(access_token),
+                status=ChannelAccountStatus.CONNECTED
+            )
+            db.add(account)
+        
+        db.commit()
+        db.refresh(account)
+        
+        # Automatically register webhooks
+        if settings.WEBHOOK_BASE_URL:
+            try:
+                await shopify_service.ensure_webhook(
+                    shop,
+                    access_token,
+                    settings.SHOPIFY_API_SECRET,
+                    settings.WEBHOOK_BASE_URL
+                )
+            except Exception as e:
+                # Log error but don't fail the connection
+                print(f"Warning: Failed to register webhooks: {e}")
+        
+        # Log audit event
+        audit_log = AuditLog(
+            user_id=current_user.id,
+            action=AuditLogAction.INTEGRATION_CONNECTED,
+            entity_type="Integration",
+            entity_id=account.id,
+            details={"channel": "SHOPIFY", "shop_domain": normalized_domain, "method": "OAuth"}
+        )
+        db.add(audit_log)
+        db.commit()
+        
+        # Redirect to frontend success page
+        frontend_url = settings.ALLOWED_ORIGINS[0] if settings.ALLOWED_ORIGINS else "http://localhost:3000"
+        return {
+            "success": True,
+            "account": {
+                "id": account.id,
+                "sellerName": account.seller_name,
+                "shopDomain": account.shop_domain,
+                "status": account.status.value
+            },
+            "redirectUrl": f"{frontend_url}/dashboard/integrations?connected=shopify"
+        }
+    
+    except Exception as e:
+        import httpx
+        if isinstance(e, httpx.HTTPStatusError):
+            raise HTTPException(
+                status_code=e.response.status_code,
+                detail=f"Shopify OAuth error: {e.response.text}"
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"OAuth callback failed: {str(e)}"
+            )

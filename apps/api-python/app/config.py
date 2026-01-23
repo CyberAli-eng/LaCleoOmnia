@@ -93,6 +93,11 @@ class Settings:
     # Webhooks
     WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
     
+    # Shopify OAuth
+    SHOPIFY_API_KEY = os.getenv("SHOPIFY_API_KEY", "")
+    SHOPIFY_API_SECRET = os.getenv("SHOPIFY_API_SECRET", "")
+    SHOPIFY_SCOPES = os.getenv("SHOPIFY_SCOPES", "read_orders,write_orders,read_products,write_products,read_inventory,write_inventory")
+    
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO" if IS_PRODUCTION else "DEBUG")
     

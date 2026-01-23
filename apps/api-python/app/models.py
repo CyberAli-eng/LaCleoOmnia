@@ -253,6 +253,10 @@ class SyncJob(Base):
     status = Column(SQLEnum(SyncJobStatus), default=SyncJobStatus.QUEUED)
     started_at = Column("started_at", DateTime, nullable=True)
     finished_at = Column("finished_at", DateTime, nullable=True)
+    completed_at = Column("completed_at", DateTime, nullable=True)  # Alias for finished_at
+    records_processed = Column("records_processed", Integer, default=0)
+    records_failed = Column("records_failed", Integer, default=0)
+    error_message = Column("error_message", String, nullable=True)
     created_at = Column("created_at", DateTime, server_default=func.now())
     
     channel_account = relationship("ChannelAccount", back_populates="sync_jobs")
