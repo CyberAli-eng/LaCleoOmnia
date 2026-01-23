@@ -32,10 +32,14 @@ export default function DashboardPage() {
 
       // Get last sync time
       const jobs = syncJobs?.jobs || [];
-      const lastJob = jobs.sort((a: any, b: any) => 
-        new Date(b.finishedAt || b.startedAt || 0).getTime() - new Date(a.finishedAt || a.startedAt || 0).getTime()
-      )[0];
-      setLastSync(lastJob?.finishedAt || lastJob?.startedAt || null);
+      if (jobs.length > 0) {
+        const lastJob = jobs.sort((a: any, b: any) => {
+          const timeA = new Date(a.finishedAt || a.startedAt || a.createdAt || 0).getTime();
+          const timeB = new Date(b.finishedAt || b.startedAt || b.createdAt || 0).getTime();
+          return timeB - timeA;
+        })[0];
+        setLastSync(lastJob?.finishedAt || lastJob?.startedAt || lastJob?.createdAt || null);
+      }
 
       // Calculate low stock items (assuming inventory has available_qty)
       const lowStockItems = Array.isArray(inventory) 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { authFetch } from "@/utils/api";
 import Link from "next/link";
 
@@ -11,7 +12,8 @@ const CHANNELS = [
   { type: "MYNTRA", name: "Myntra", icon: "👕", color: "pink" },
 ];
 
-export default function IntegrationsPage() {
+function IntegrationsPageContent() {
+  const searchParams = useSearchParams();
   const [integrations, setIntegrations] = useState<any[]>([]);
   const [syncJobs, setSyncJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
@@ -26,16 +28,41 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+    
+    // Check for OAuth callback parameters
+    const connected = searchParams?.get("connected");
+    const error = searchParams?.get("error");
+    const shop = searchParams?.get("shop");
+    
+    if (connected === "shopify") {
+      setStatus(`✅ Successfully connected to ${shop || "Shopify"}!`);
+      setStatusType("success");
+      // Reload integrations to show new connection
+      setTimeout(() => loadData(), 1000);
+    } else if (error) {
+      const errorMessages: Record<string, string> = {
+        oauth_not_configured: "OAuth is not configured. Please contact support.",
+        no_code: "Authorization code not received from Shopify.",
+        invalid_state: "OAuth session expired. Please try again.",
+        user_not_found: "User not found. Please login again.",
+        no_access_token: "Failed to get access token from Shopify.",
+        shopify_error_401: "Shopify authentication failed. Please check your app credentials.",
+        shopify_error_403: "Shopify access denied. Please check permissions.",
+        oauth_failed: "OAuth connection failed. Please try again or use manual connection.",
+      };
+      setStatus(`❌ ${errorMessages[error] || `Connection failed: ${error}`}`);
+      setStatusType("error");
+    }
+  }, [searchParams]);
 
   const loadData = async () => {
     try {
-      const [configData, jobsData] = await Promise.all([
+      const [configData] = await Promise.all([
         authFetch("/config/status").catch(() => ({ integrations: [] })),
-        authFetch("/sync/jobs").catch(() => ({ jobs: [] })),
       ]);
       setIntegrations(configData?.integrations || []);
-      setSyncJobs(jobsData?.jobs || []);
+      // Sync jobs are loaded per integration if needed
+      setSyncJobs([]);
     } catch (err) {
       console.error("Failed to load data:", err);
     }
@@ -229,19 +256,24 @@ export default function IntegrationsPage() {
                   {channel.type === "SHOPIFY" && (
                     <button
                       onClick={async () => {
+                        const shopDomain = prompt("Enter your shop domain (e.g., mystore or mystore.myshopify.com):");
+                        if (!shopDomain) return;
+                        
+                        setLoading("oauth");
+                        setStatus(null);
                         try {
-                          const result = await authFetch(`/channels/shopify/oauth/install?shop=${encodeURIComponent(prompt("Enter your shop domain (e.g., mystore or mystore.myshopify.com):") || "")}`);
+                          const result = await authFetch(`/channels/shopify/oauth/install?shop=${encodeURIComponent(shopDomain)}`);
                           if (result.installUrl) {
-                            window.open(result.installUrl, "_blank");
-                            setStatus("✅ Redirecting to Shopify for OAuth installation...");
-                            setStatusType("success");
+                            // Open in same window to allow redirect back
+                            window.location.href = result.installUrl;
                           }
                         } catch (err: any) {
                           setStatus(`❌ OAuth failed: ${err.message || "Please use manual connection"}`);
                           setStatusType("error");
-                          setShowConnectForm(showConnectForm === channel.type ? null : channel.type);
+                          setLoading(null);
                         }
                       }}
+                      disabled={loading === "oauth"}
                       className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
                     >
                       Connect via OAuth (Recommended)
@@ -322,5 +354,13 @@ export default function IntegrationsPage() {
         })}
       </div>
     </div>
+  );
+}
+
+export default function IntegrationsPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
+      <IntegrationsPageContent />
+    </Suspense>
   );
 }

@@ -15,7 +15,7 @@ class ShopifyOAuthService:
         self.api_secret = settings.SHOPIFY_API_SECRET
         self.scopes = settings.SHOPIFY_SCOPES
     
-    def get_install_url(self, shop_domain: str, redirect_uri: str) -> str:
+    def get_install_url(self, shop_domain: str, redirect_uri: str, state: str = None) -> str:
         """Generate Shopify OAuth install URL"""
         # Normalize shop domain
         shop = shop_domain.lower().strip()
@@ -30,6 +30,10 @@ class ShopifyOAuthService:
             "scope": self.scopes,
             "redirect_uri": redirect_uri,
         }
+        
+        # Add state parameter if provided
+        if state:
+            params["state"] = state
         
         return f"https://{shop}/admin/oauth/authorize?{urlencode(params)}"
     
