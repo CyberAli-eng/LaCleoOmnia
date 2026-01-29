@@ -31,6 +31,7 @@ from app.services.shopify_service import (
     get_orders as shopify_get_orders,
     get_inventory as shopify_get_inventory,
     get_orders_raw,
+    get_access_scopes,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,13 @@ def _get_shopify_integration(db: Session):
     return integration
 
 
+def _normalize_scopes_for_inventory(scopes_list: list[str]) -> bool:
+    """True if list contains read_inventory, read_locations, read_products (case-insensitive)."""
+    required = {"read_inventory", "read_locations", "read_products"}
+    normalized = {s.strip().lower() for s in scopes_list if s and s.strip()}
+    return required.issubset(normalized)
+
+
 @router.get("/shopify/status")
 async def shopify_status(
     db: Session = Depends(get_db),
@@ -56,14 +64,20 @@ async def shopify_status(
 ):
     """
     GET /api/integrations/shopify/status
-    Response: { "connected": true, "shop": "velomora-com.myshopify.com" }
+    Uses live scopes from Shopify when possible so status reflects actual token permissions.
     """
     integration = db.query(ShopifyIntegration).first()
     if not integration or not integration.access_token:
         return {"connected": False, "shop": None}
-    scopes_list = [s.strip() for s in (integration.scopes or "").split(",") if s.strip()]
-    required_inventory_scopes = {"read_inventory", "read_locations", "read_products"}
-    has_inventory_scopes = required_inventory_scopes.issubset(set(scopes_list))
+    # Prefer live scopes from Shopify (GET /admin/oauth/access_scopes.json)
+    live_scopes = await get_access_scopes(integration.shop_domain, integration.access_token)
+    if live_scopes:
+        scopes_list = live_scopes
+        has_inventory_scopes = _normalize_scopes_for_inventory(scopes_list)
+    else:
+        # Fallback: stored scopes from OAuth callback (comma-separated)
+        scopes_list = [s.strip() for s in (integration.scopes or "").split(",") if s.strip()]
+        has_inventory_scopes = _normalize_scopes_for_inventory(scopes_list)
     return {
         "connected": True,
         "shop": integration.shop_domain,
