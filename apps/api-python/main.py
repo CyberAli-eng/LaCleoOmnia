@@ -1,18 +1,21 @@
 """
 LaCleoOmnia OMS - FastAPI Backend
 """
-from fastapi import FastAPI, Request, HTTPException
+import os
+from fastapi import FastAPI, Request, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi import status
+from sqlalchemy.orm import Session
 import uvicorn
 import logging
 
-from app.routers import auth, channels, orders, inventory, products, warehouses, shipments, sync, config, webhooks, marketplaces, analytics, labels, workers, audit, users
-from app.database import engine, Base
+from app.routers import auth, channels, orders, inventory, products, warehouses, shipments, sync, config, webhooks, marketplaces, analytics, labels, workers, audit, users, integrations
+from app.database import engine, Base, get_db
 from app.config import settings
 from app.services.shopify_oauth import ShopifyOAuthService
+from app.models import ShopifyIntegration
 
 # Configure logging
 logging.basicConfig(
@@ -145,6 +148,7 @@ app.include_router(workers.router, prefix="/api/workers", tags=["workers"])
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
+app.include_router(integrations.router, prefix="/api/integrations", tags=["integrations"])
 
 @app.get("/health")
 async def health():
@@ -158,30 +162,85 @@ async def health():
     }
 
 
+def _get_frontend_url() -> str:
+    """Redirect URL after OAuth - no hardcoding; use env or allowed origins."""
+    if settings.ALLOWED_ORIGINS:
+        return settings.ALLOWED_ORIGINS[0].rstrip("/")
+    if settings.IS_CLOUD:
+        return os.getenv("FRONTEND_URL") or os.getenv("NEXT_PUBLIC_URL") or "https://lacleo-web.vercel.app"
+    return os.getenv("FRONTEND_URL") or "http://localhost:3000"
+
+
 @app.get(
     "/auth/shopify/callback",
-    response_class=PlainTextResponse,
-    summary="Shopify OAuth callback (HMAC verification only)",
+    summary="Shopify OAuth callback: HMAC verify, token exchange, persist, redirect",
 )
-async def auth_shopify_callback(request: Request):
+async def auth_shopify_callback(
+    request: Request,
+    shop: str = Query(None),
+    code: str = Query(None),
+    hmac: str = Query(None),
+    state: str = Query(None),
+    timestamp: str = Query(None),
+    db: Session = Depends(get_db),
+):
     """
-    Step 1: HMAC verification only.
     Receives shop, hmac, timestamp, code from Shopify.
-    Verifies the request is from Shopify; no token exchange or DB yet.
+    Verifies HMAC, exchanges code for access_token, saves/updates shopify_integrations, redirects to dashboard.
     """
     raw_query = request.url.query or ""
-    if not raw_query:
-        return PlainTextResponse("Missing query parameters", status_code=status.HTTP_400_BAD_REQUEST)
+    frontend_url = _get_frontend_url()
+    redirect_fail = f"{frontend_url}/dashboard/integrations?error=oauth_failed"
+    redirect_ok = f"{frontend_url}/dashboard/integrations?shopify=connected"
 
+    if not raw_query:
+        return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=missing_params")
     if not settings.SHOPIFY_API_SECRET:
         logger.warning("SHOPIFY_API_SECRET not set; cannot verify HMAC")
-        return PlainTextResponse("Invalid Shopify signature", status_code=status.HTTP_401_UNAUTHORIZED)
+        return RedirectResponse(url=redirect_fail)
+    if not shop or not code:
+        return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=missing_shop_or_code")
 
     oauth_service = ShopifyOAuthService()
     if not oauth_service.verify_hmac(raw_query):
-        return PlainTextResponse("Invalid Shopify signature", status_code=status.HTTP_401_UNAUTHORIZED)
+        return RedirectResponse(url=redirect_fail)
 
-    return PlainTextResponse("Shopify callback verified successfully")
+    try:
+        normalized_shop = oauth_service.normalize_shop_domain(shop)
+    except ValueError as e:
+        logger.warning("Invalid shop domain: %s", e)
+        return RedirectResponse(url=redirect_fail)
+
+    try:
+        token_data = await oauth_service.exchange_code_for_token(normalized_shop, code)
+    except Exception as e:
+        logger.exception("Token exchange failed: %s", e)
+        return RedirectResponse(url=redirect_fail)
+
+    access_token = token_data.get("access_token")
+    scopes = token_data.get("scope") or ""
+    if not access_token:
+        logger.error("No access_token in Shopify response")
+        return RedirectResponse(url=redirect_fail)
+
+    # Save or update by shop_domain (do not re-run OAuth on every request)
+    existing = db.query(ShopifyIntegration).filter(
+        ShopifyIntegration.shop_domain == normalized_shop,
+    ).first()
+    if existing:
+        existing.access_token = access_token
+        existing.scopes = scopes
+        logger.info("Updated Shopify integration for shop: %s", normalized_shop)
+    else:
+        db.add(ShopifyIntegration(
+            shop_domain=normalized_shop,
+            access_token=access_token,
+            scopes=scopes,
+        ))
+        logger.info("Created Shopify integration for shop: %s", normalized_shop)
+    db.commit()
+
+    return RedirectResponse(url=redirect_ok)
 
 @app.get("/api")
 async def root():

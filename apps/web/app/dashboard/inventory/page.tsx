@@ -40,6 +40,7 @@ export default function InventoryPage() {
   const [adjustReason, setAdjustReason] = useState("");
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [shopifyInventory, setShopifyInventory] = useState<{ sku: string; product_name: string; available: number; location: string }[]>([]);
 
   useEffect(() => {
     loadData();
@@ -48,12 +49,14 @@ export default function InventoryPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [inventoryData, warehousesData] = await Promise.all([
+      const [inventoryData, warehousesData, shopifyData] = await Promise.all([
         authFetch("/inventory").catch(() => ({ inventory: [] })),
         authFetch("/warehouses").catch(() => ({ warehouses: [] })),
+        authFetch("/integrations/shopify/inventory").catch(() => ({ inventory: [] })),
       ]);
       setInventory(Array.isArray(inventoryData?.inventory) ? inventoryData.inventory : []);
       setWarehouses(Array.isArray(warehousesData?.warehouses) ? warehousesData.warehouses : []);
+      setShopifyInventory(Array.isArray(shopifyData?.inventory) ? shopifyData.inventory : []);
     } catch (err) {
       console.error("Failed to load data:", err);
     } finally {
@@ -271,6 +274,38 @@ export default function InventoryPage() {
           )}
         </div>
       </div>
+
+      {/* Shopify inventory (live from API when connected) */}
+      {shopifyInventory.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h2 className="text-base font-semibold text-slate-900">From Shopify</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Live inventory from your connected store</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="text-left py-3 px-4 font-semibold text-slate-700">SKU</th>
+                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Product name</th>
+                  <th className="text-right py-3 px-4 font-semibold text-slate-700">Available quantity</th>
+                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Location</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shopifyInventory.map((row, idx) => (
+                  <tr key={`${row.sku}-${row.location}-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="py-3 px-4 font-mono text-slate-900">{row.sku}</td>
+                    <td className="py-3 px-4 text-slate-700">{row.product_name || "—"}</td>
+                    <td className="py-3 px-4 text-right font-semibold text-slate-900">{row.available}</td>
+                    <td className="py-3 px-4 text-slate-600">{row.location || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Adjust Modal */}
       {showAdjustModal && (

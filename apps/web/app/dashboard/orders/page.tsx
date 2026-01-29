@@ -25,8 +25,19 @@ interface OrderItem {
   fulfillmentStatus: string;
 }
 
+interface ShopifyOrder {
+  id: string;
+  order_id: string;
+  customer: string;
+  customer_name?: string;
+  total: number;
+  status: string;
+  created_at: string;
+}
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [shopifyOrders, setShopifyOrders] = useState<ShopifyOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -42,8 +53,12 @@ export default function OrdersPage() {
   const loadOrders = async () => {
     setLoading(true);
     try {
-      const data = await authFetch("/orders");
-      setOrders(Array.isArray(data?.orders) ? data.orders : []);
+      const [ordersRes, shopifyRes] = await Promise.all([
+        authFetch("/orders").catch(() => ({ orders: [] })),
+        authFetch("/integrations/shopify/orders").catch(() => ({ orders: [] })),
+      ]);
+      setOrders(Array.isArray(ordersRes?.orders) ? ordersRes.orders : []);
+      setShopifyOrders(Array.isArray(shopifyRes?.orders) ? shopifyRes.orders : []);
     } catch (err) {
       console.error("Failed to load orders:", err);
     } finally {
@@ -370,6 +385,46 @@ export default function OrdersPage() {
           )}
         </div>
       </div>
+
+      {/* Shopify orders (live from API when connected) */}
+      {shopifyOrders.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h2 className="text-base font-semibold text-slate-900">From Shopify</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Live orders from your connected store</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Order ID</th>
+                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Customer</th>
+                  <th className="text-right py-3 px-4 font-semibold text-slate-700">Total</th>
+                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Status</th>
+                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Created At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shopifyOrders.map((o) => (
+                  <tr key={o.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="py-3 px-4 font-mono text-slate-900">{o.order_id}</td>
+                    <td className="py-3 px-4 text-slate-700">{o.customer_name || o.customer || "—"}</td>
+                    <td className="py-3 px-4 text-right font-medium text-slate-900">${Number(o.total).toFixed(2)}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                        {o.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-slate-600">
+                      {o.created_at ? new Date(o.created_at).toLocaleString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Order Detail Modal */}
       {selectedOrder && (

@@ -318,3 +318,15 @@ class AuditLog(Base):
     created_at = Column("created_at", DateTime, server_default=func.now())
     
     user = relationship("User")
+
+
+class ShopifyIntegration(Base):
+    """Shopify OAuth connection - one row per shop. Token stored here; encryption can be added later."""
+    __tablename__ = "shopify_integrations"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    shop_domain = Column("shop_domain", String, unique=True, nullable=False, index=True)
+    access_token = Column("access_token", String, nullable=False)  # Plain for MVP; encrypt later
+    scopes = Column("scopes", String, nullable=True)
+    installed_at = Column("installed_at", DateTime, server_default=func.now())
+    last_synced_at = Column("last_synced_at", DateTime, nullable=True)

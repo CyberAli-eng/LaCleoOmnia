@@ -20,6 +20,7 @@ function IntegrationsPageContent() {
   const [status, setStatus] = useState<string | null>(null);
   const [statusType, setStatusType] = useState<"success" | "error">("success");
   const [showConnectForm, setShowConnectForm] = useState<string | null>(null);
+  const [shopifyStatus, setShopifyStatus] = useState<{ connected: boolean; shop: string | null }>({ connected: false, shop: null });
   
   // Shopify form state
   const [shopDomain, setShopDomain] = useState("");
@@ -29,17 +30,15 @@ function IntegrationsPageContent() {
   useEffect(() => {
     loadData();
     
-    // Check for OAuth callback parameters
-    const connected = searchParams?.get("connected");
+    // Check for OAuth callback: ?shopify=connected (redirect from backend)
+    const shopifyParam = searchParams?.get("shopify");
     const error = searchParams?.get("error");
-    const shop = searchParams?.get("shop");
     
-    if (connected === "shopify") {
-      setStatus(`✅ Successfully connected to ${shop || "Shopify"}!`);
+    if (shopifyParam === "connected") {
+      setStatus("Shopify connected successfully");
       setStatusType("success");
-      // Reload integrations to show new connection
-      setTimeout(() => loadData(), 1000);
-    } else if (error) {
+      setTimeout(() => loadData(), 500);
+    } else if (error && typeof error === "string") {
       const errorMessages: Record<string, string> = {
         oauth_not_configured: "OAuth is not configured. Please contact support.",
         no_code: "Authorization code not received from Shopify.",
@@ -49,6 +48,8 @@ function IntegrationsPageContent() {
         shopify_error_401: "Shopify authentication failed. Please check your app credentials.",
         shopify_error_403: "Shopify access denied. Please check permissions.",
         oauth_failed: "OAuth connection failed. Please try again or use manual connection.",
+        missing_params: "Missing query parameters.",
+        missing_shop_or_code: "Missing shop or code from Shopify.",
       };
       setStatus(`❌ ${errorMessages[error] || `Connection failed: ${error}`}`);
       setStatusType("error");
@@ -57,11 +58,15 @@ function IntegrationsPageContent() {
 
   const loadData = async () => {
     try {
-      const [configData] = await Promise.all([
+      const [configData, shopifyStatusRes] = await Promise.all([
         authFetch("/config/status").catch(() => ({ integrations: [] })),
+        authFetch("/integrations/shopify/status").catch(() => ({ connected: false, shop: null })),
       ]);
       setIntegrations(configData?.integrations || []);
-      // Sync jobs are loaded per integration if needed
+      setShopifyStatus({
+        connected: !!shopifyStatusRes?.connected,
+        shop: shopifyStatusRes?.shop ?? null,
+      });
       setSyncJobs([]);
     } catch (err) {
       console.error("Failed to load data:", err);
@@ -176,7 +181,10 @@ function IntegrationsPageContent() {
       <div className="grid gap-6 md:grid-cols-2">
         {CHANNELS.map((channel) => {
           const integration = integrations.find((i) => i.type === channel.type);
-          const isConnected = integration?.status === "CONNECTED";
+          const isShopify = channel.type === "SHOPIFY";
+          const isConnected = isShopify
+            ? shopifyStatus.connected || integration?.status === "CONNECTED"
+            : integration?.status === "CONNECTED";
           const lastSync = getLastSync(channel.type);
 
           return (
@@ -195,8 +203,10 @@ function IntegrationsPageContent() {
                           <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
                             Connected
                           </span>
-                          {integration.name && (
-                            <span className="text-xs text-slate-500">{integration.name}</span>
+                          {(isShopify ? shopifyStatus.shop : integration?.name) && (
+                            <span className="text-xs text-slate-500">
+                              {isShopify ? shopifyStatus.shop : integration?.name}
+                            </span>
                           )}
                         </>
                       ) : (
@@ -217,22 +227,26 @@ function IntegrationsPageContent() {
 
               {isConnected ? (
                 <div className="space-y-2">
-                  <button
-                    onClick={() => handleTestConnection(integration.id)}
-                    disabled={loading === `test-${integration.id}`}
-                    className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    {loading === `test-${integration.id}` ? "Testing..." : "Test Connection"}
-                  </button>
+                  {integration?.id && (
+                    <button
+                      onClick={() => handleTestConnection(integration.id)}
+                      disabled={loading === `test-${integration.id}`}
+                      className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {loading === `test-${integration.id}` ? "Testing..." : "Test Connection"}
+                    </button>
+                  )}
                   {channel.type === "SHOPIFY" && (
                     <>
-                      <button
-                        onClick={() => handleImportOrders(integration.id)}
-                        disabled={loading === `import-${integration.id}`}
-                        className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {loading === `import-${integration.id}` ? "Importing..." : "Import Orders"}
-                      </button>
+                      {(integration?.id) && (
+                        <button
+                          onClick={() => handleImportOrders(integration.id)}
+                          disabled={loading === `import-${integration.id}`}
+                          className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {loading === `import-${integration.id}` ? "Importing..." : "Import Orders"}
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           // TODO: Push inventory
