@@ -102,47 +102,60 @@ async def get_inventory(shop_domain: str, access_token: str) -> list[dict]:
     """
     Fetch inventory via inventory_items and inventory_levels.
     Normalizes to: SKU, product name, available quantity, location.
+    Defensive: never raises. Returns [] if Shopify returns error (e.g. missing read_locations scope).
     """
     base = _base_url(shop_domain)
     h = _headers(access_token)
-    async with httpx.AsyncClient() as client:
-        # Get inventory items (includes SKU via variant)
-        inv_response = await client.get(
-            f"{base}/inventory_items.json",
-            params={"limit": 250},
-            headers=h,
-            timeout=30.0,
-        )
-        inv_response.raise_for_status()
-        items_data = inv_response.json()
-        items = items_data.get("inventory_items", [])
+    items: list[dict] = []
+    levels: list[dict] = []
 
-        # Get levels for available qty and location
-        levels_response = await client.get(
-            f"{base}/inventory_levels.json",
-            params={"limit": 250},
-            headers=h,
-            timeout=30.0,
-        )
-        levels_response.raise_for_status()
-        levels_data = levels_response.json()
-        levels = levels_data.get("inventory_levels", [])
+    async with httpx.AsyncClient() as client:
+        try:
+            inv_response = await client.get(
+                f"{base}/inventory_items.json",
+                params={"limit": 250},
+                headers=h,
+                timeout=30.0,
+            )
+            inv_response.raise_for_status()
+            items_data = inv_response.json()
+            items = items_data.get("inventory_items") or []
+        except (httpx.HTTPStatusError, Exception) as e:
+            logger.warning("Shopify inventory_items failed (check read_products/read_inventory): %s", e)
+            return []
+
+        try:
+            levels_response = await client.get(
+                f"{base}/inventory_levels.json",
+                params={"limit": 250},
+                headers=h,
+                timeout=30.0,
+            )
+            levels_response.raise_for_status()
+            levels_data = levels_response.json()
+            levels = levels_data.get("inventory_levels") or []
+        except (httpx.HTTPStatusError, Exception) as e:
+            logger.warning(
+                "Shopify inventory_levels failed (add read_locations scope and reinstall app): %s", e
+            )
+            # Return items with available=0 so UI shows SKUs; levels stay empty
+            levels = []
 
     # Map inventory_item_id -> [levels]
     by_item: dict[int, list] = {}
-    for lev in levels:
+    for lev in levels or []:
         iid = lev.get("inventory_item_id")
         if iid is not None:
             by_item.setdefault(iid, []).append(lev)
 
-    # Build normalized rows: SKU, product name, available, location
     result = []
-    for item in items:
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
         sku = (item.get("sku") or "").strip() or "—"
-        # Admin API inventory_item doesn't have product title; we use sku as identifier
-        name = item.get("title") or sku
+        name = (item.get("title") or sku) or "—"
         item_id = item.get("id")
-        item_levels = by_item.get(item_id, [])
+        item_levels = by_item.get(item_id, []) if item_id is not None else []
         for lev in item_levels:
             result.append({
                 "sku": sku,

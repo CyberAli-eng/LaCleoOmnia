@@ -20,7 +20,7 @@ function IntegrationsPageContent() {
   const [status, setStatus] = useState<string | null>(null);
   const [statusType, setStatusType] = useState<"success" | "error">("success");
   const [showConnectForm, setShowConnectForm] = useState<string | null>(null);
-  const [shopifyStatus, setShopifyStatus] = useState<{ connected: boolean; shop: string | null }>({ connected: false, shop: null });
+  const [shopifyStatus, setShopifyStatus] = useState<{ connected: boolean; shop: string | null; scopesOkForInventory?: boolean }>({ connected: false, shop: null });
   
   // Shopify form state
   const [shopDomain, setShopDomain] = useState("");
@@ -66,6 +66,7 @@ function IntegrationsPageContent() {
       setShopifyStatus({
         connected: !!shopifyStatusRes?.connected,
         shop: shopifyStatusRes?.shop ?? null,
+        scopesOkForInventory: shopifyStatusRes?.scopes_ok_for_inventory ?? true,
       });
       setSyncJobs([]);
     } catch (err) {
@@ -215,6 +216,11 @@ function IntegrationsPageContent() {
                         </span>
                       )}
                     </div>
+                    {isShopify && isConnected && shopifyStatus.scopesOkForInventory === false && (
+                      <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">
+                        Inventory sync needs <strong>read_locations</strong>. Add it in Shopify Partner Dashboard → App → Scopes, then uninstall and reinstall the app.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

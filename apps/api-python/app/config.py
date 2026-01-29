@@ -96,7 +96,11 @@ class Settings:
     # Shopify OAuth
     SHOPIFY_API_KEY = os.getenv("SHOPIFY_API_KEY", "")
     SHOPIFY_API_SECRET = os.getenv("SHOPIFY_API_SECRET", "")
-    SHOPIFY_SCOPES = os.getenv("SHOPIFY_SCOPES", "read_orders,write_orders,read_products,write_products,read_inventory,write_inventory")
+    # read_locations is REQUIRED for inventory_levels API; without it inventory sync returns 403/empty
+    SHOPIFY_SCOPES = os.getenv(
+        "SHOPIFY_SCOPES",
+        "read_orders,write_orders,read_products,write_products,read_inventory,write_inventory,read_locations",
+    )
     
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO" if IS_PRODUCTION else "DEBUG")

@@ -41,6 +41,7 @@ export default function InventoryPage() {
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [shopifyInventory, setShopifyInventory] = useState<{ sku: string; product_name: string; available: number; location: string }[]>([]);
+  const [shopifyInventoryWarning, setShopifyInventoryWarning] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -48,15 +49,19 @@ export default function InventoryPage() {
 
   const loadData = async () => {
     setLoading(true);
+    setShopifyInventoryWarning(null);
     try {
       const [inventoryData, warehousesData, shopifyData] = await Promise.all([
         authFetch("/inventory").catch(() => ({ inventory: [] })),
         authFetch("/warehouses").catch(() => ({ warehouses: [] })),
-        authFetch("/integrations/shopify/inventory").catch(() => ({ inventory: [] })),
+        authFetch("/integrations/shopify/inventory").catch(() => ({ inventory: [], warning: null })),
       ]);
       setInventory(Array.isArray(inventoryData?.inventory) ? inventoryData.inventory : []);
       setWarehouses(Array.isArray(warehousesData?.warehouses) ? warehousesData.warehouses : []);
       setShopifyInventory(Array.isArray(shopifyData?.inventory) ? shopifyData.inventory : []);
+      if (shopifyData?.warning && typeof shopifyData.warning === "string") {
+        setShopifyInventoryWarning(shopifyData.warning);
+      }
     } catch (err) {
       console.error("Failed to load data:", err);
     } finally {
@@ -276,6 +281,11 @@ export default function InventoryPage() {
       </div>
 
       {/* Shopify inventory (live from API when connected) */}
+      {shopifyInventoryWarning && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          {shopifyInventoryWarning}
+        </div>
+      )}
       {shopifyInventory.length > 0 && (
         <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">

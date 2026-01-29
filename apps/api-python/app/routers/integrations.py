@@ -61,9 +61,14 @@ async def shopify_status(
     integration = db.query(ShopifyIntegration).first()
     if not integration or not integration.access_token:
         return {"connected": False, "shop": None}
+    scopes_list = [s.strip() for s in (integration.scopes or "").split(",") if s.strip()]
+    required_inventory_scopes = {"read_inventory", "read_locations", "read_products"}
+    has_inventory_scopes = required_inventory_scopes.issubset(set(scopes_list))
     return {
         "connected": True,
         "shop": integration.shop_domain,
+        "scopes": scopes_list,
+        "scopes_ok_for_inventory": has_inventory_scopes,
     }
 
 
@@ -98,21 +103,28 @@ async def shopify_inventory(
 ):
     """
     GET /api/integrations/shopify/inventory
-    Fetch inventory levels via inventory_items and inventory_levels. Normalize: SKU, product name, available, location.
+    Fetch inventory from Shopify. Always returns 200.
+    On missing read_locations/API errors: returns empty list + warning (never 500/502).
     """
-    integration = _get_shopify_integration(db)
+    try:
+        integration = _get_shopify_integration(db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("Unexpected error getting Shopify integration: %s", e)
+        return {"inventory": [], "warning": "Inventory could not be loaded. Check Shopify connection."}
     try:
         inventory = await shopify_get_inventory(
             integration.shop_domain,
             integration.access_token,
         )
-        return {"inventory": inventory}
+        return {"inventory": inventory or []}
     except Exception as e:
-        logger.exception("Shopify API error in get_inventory: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to fetch inventory from Shopify.",
-        )
+        logger.warning("Shopify inventory fetch failed (check scopes read_inventory, read_locations): %s", e)
+        return {
+            "inventory": [],
+            "warning": "Inventory could not be loaded from Shopify. Add read_locations scope in Shopify Partner Dashboard, then uninstall and reinstall the app.",
+        }
 
 
 @router.post("/shopify/sync/orders")
@@ -286,59 +298,65 @@ async def shopify_sync(
             ))
         orders_inserted += 1
 
-    # 2) Sync inventory into DB (Option B: single source of truth)
+    # 2) Sync inventory into DB (never crash; 0 synced if Shopify or DB fails)
+    inv_list: list = []
     try:
         inv_list = await shopify_get_inventory(
             integration.shop_domain,
             integration.access_token,
         )
     except Exception as e:
-        logger.exception("Shopify API error in sync (inventory): %s", e)
-        inv_list = []
-    warehouse = db.query(Warehouse).filter(Warehouse.name == "Shopify").first()
-    if not warehouse:
-        warehouse = Warehouse(name="Shopify", city=None, state=None)
-        db.add(warehouse)
-        db.flush()
-    product = db.query(Product).filter(Product.title == "Shopify Products").first()
-    if not product:
-        product = Product(title="Shopify Products", brand=None, category=None)
-        db.add(product)
-        db.flush()
+        logger.warning("Shopify inventory fetch in sync failed: %s", e)
     inventory_synced = 0
-    for row in inv_list:
-        sku = (row.get("sku") or "").strip() or "—"
-        if sku == "—":
-            continue
-        product_name = (row.get("product_name") or sku)[:255]
-        available = int(row.get("available", 0) or 0)
-        variant = db.query(ProductVariant).filter(ProductVariant.sku == sku).first()
-        if not variant:
-            variant = ProductVariant(
-                product_id=product.id,
-                sku=sku,
-                mrp=Decimal("0"),
-                selling_price=Decimal("0"),
-            )
-            db.add(variant)
+    try:
+        warehouse = db.query(Warehouse).filter(Warehouse.name == "Shopify").first()
+        if not warehouse:
+            warehouse = Warehouse(name="Shopify", city=None, state=None)
+            db.add(warehouse)
             db.flush()
-        inv = db.query(Inventory).filter(
-            Inventory.warehouse_id == warehouse.id,
-            Inventory.variant_id == variant.id,
-        ).first()
-        if not inv:
-            inv = Inventory(
-                warehouse_id=warehouse.id,
-                variant_id=variant.id,
-                total_qty=available,
-                reserved_qty=0,
-            )
-            db.add(inv)
-            inventory_synced += 1
-        else:
-            if inv.total_qty != available:
-                inv.total_qty = available
+        product = db.query(Product).filter(Product.title == "Shopify Products").first()
+        if not product:
+            product = Product(title="Shopify Products", brand=None, category=None)
+            db.add(product)
+            db.flush()
+        for row in inv_list or []:
+            if not isinstance(row, dict):
+                continue
+            sku = (row.get("sku") or "").strip() or "—"
+            if sku == "—":
+                continue
+            product_name = ((row.get("product_name") or sku) or "—")[:255]
+            available = int(row.get("available", 0) or 0)
+            variant = db.query(ProductVariant).filter(ProductVariant.sku == sku).first()
+            if not variant:
+                variant = ProductVariant(
+                    product_id=product.id,
+                    sku=sku,
+                    mrp=Decimal("0"),
+                    selling_price=Decimal("0"),
+                )
+                db.add(variant)
+                db.flush()
+            inv = db.query(Inventory).filter(
+                Inventory.warehouse_id == warehouse.id,
+                Inventory.variant_id == variant.id,
+            ).first()
+            if not inv:
+                inv = Inventory(
+                    warehouse_id=warehouse.id,
+                    variant_id=variant.id,
+                    total_qty=available,
+                    reserved_qty=0,
+                )
+                db.add(inv)
                 inventory_synced += 1
+            else:
+                if inv.total_qty != available:
+                    inv.total_qty = available
+                    inventory_synced += 1
+    except Exception as e:
+        logger.exception("Inventory DB sync failed (orders still saved): %s", e)
+        inventory_synced = 0
 
     integration.last_synced_at = datetime.now(timezone.utc)
     db.commit()
