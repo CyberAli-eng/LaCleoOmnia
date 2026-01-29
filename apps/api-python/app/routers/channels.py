@@ -278,7 +278,7 @@ async def shopify_oauth_install(
                     if not base_url:
                         base_url = "http://localhost:8000"
             
-            redirect_uri = f"{base_url}/api/channels/shopify/oauth/callback"
+            redirect_uri = f"{base_url}/auth/shopify/callback"
         else:
             # Validate provided redirect_uri to prevent open redirects
             from urllib.parse import urlparse
