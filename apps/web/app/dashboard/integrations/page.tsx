@@ -238,18 +238,37 @@ function IntegrationsPageContent() {
                   )}
                   {channel.type === "SHOPIFY" && (
                     <>
+                      <button
+                        onClick={async () => {
+                          setLoading("sync-orders");
+                          setStatus(null);
+                          try {
+                            const res = await authFetch("/integrations/shopify/sync/orders", { method: "POST" }) as { synced?: number; total_fetched?: number; message?: string };
+                            setStatus(res?.message ?? `Synced ${res?.synced ?? 0} new orders.`);
+                            setStatusType("success");
+                          } catch (err: any) {
+                            setStatus(`❌ Sync failed: ${err.message || "Unknown error"}`);
+                            setStatusType("error");
+                          } finally {
+                            setLoading(null);
+                          }
+                        }}
+                        disabled={loading === "sync-orders"}
+                        className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {loading === "sync-orders" ? "Syncing..." : "Sync Shopify Orders"}
+                      </button>
                       {(integration?.id) && (
                         <button
                           onClick={() => handleImportOrders(integration.id)}
                           disabled={loading === `import-${integration.id}`}
-                          className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                         >
-                          {loading === `import-${integration.id}` ? "Importing..." : "Import Orders"}
+                          {loading === `import-${integration.id}` ? "Importing..." : "Import Orders (legacy)"}
                         </button>
                       )}
                       <button
                         onClick={() => {
-                          // TODO: Push inventory
                           alert("Push inventory feature coming soon");
                         }}
                         className="w-full rounded-lg border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"

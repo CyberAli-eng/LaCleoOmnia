@@ -1,5 +1,5 @@
 """
-Shopify Admin API service - authenticated requests, API version 2026-01.
+Shopify Admin API service - authenticated requests. API version 2024-01 (stable).
 Centralizes headers and request building. Never expose access_token to frontend.
 """
 import httpx
@@ -46,13 +46,38 @@ async def get_orders(shop_domain: str, access_token: str, limit: int = 250) -> l
             "id": str(o.get("id")),
             "order_id": str(o.get("id")),
             "customer": (o.get("customer") or {}).get("email") or o.get("email") or "—",
-            "customer_name": (o.get("customer") or {}).get("first_name") or "",
+            "customer_name": _order_customer_name(o),
             "total": float(o.get("total_price", 0) or 0),
             "status": (o.get("fulfillment_status") or o.get("financial_status") or "unknown"),
             "created_at": o.get("created_at") or "",
         }
         for o in raw_orders
     ]
+
+
+def _order_customer_name(o: dict) -> str:
+    """First name + last name or email for display."""
+    c = o.get("customer") or {}
+    first = (c.get("first_name") or "").strip()
+    last = (c.get("last_name") or "").strip()
+    if first or last:
+        return f"{first} {last}".strip()
+    return (o.get("email") or "").strip() or "—"
+
+
+async def get_orders_raw(shop_domain: str, access_token: str, limit: int = 250) -> list[dict]:
+    """Fetch raw orders from Shopify for sync (full payload including line_items)."""
+    url = f"{_base_url(shop_domain)}/orders.json"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            url,
+            params={"status": "any", "limit": limit},
+            headers=_headers(access_token),
+            timeout=30.0,
+        )
+        response.raise_for_status()
+    data = response.json()
+    return data.get("orders", [])
 
 
 async def get_products(shop_domain: str, access_token: str, limit: int = 250) -> list[dict]:

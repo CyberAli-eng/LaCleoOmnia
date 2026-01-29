@@ -25,6 +25,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userName, setUserName] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [integrations, setIntegrations] = useState<any[]>([]);
+  const [shopifyConnected, setShopifyConnected] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showQuickActions, setShowQuickActions] = useState(false);
 
@@ -55,8 +56,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const loadIntegrations = async () => {
     try {
-      const data = await authFetch("/config/status");
-      setIntegrations(data?.integrations || []);
+      const [configData, shopifyStatusRes] = await Promise.all([
+        authFetch("/config/status").catch(() => ({ integrations: [] })),
+        authFetch("/integrations/shopify/status").catch(() => ({ connected: false })),
+      ]);
+      setIntegrations(configData?.integrations || []);
+      setShopifyConnected(!!shopifyStatusRes?.connected);
     } catch (err) {
       console.error("Failed to load integrations:", err);
     }
@@ -70,6 +75,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   const getChannelStatus = (type: string) => {
+    if (type === "SHOPIFY") {
+      if (shopifyConnected) return "✅";
+      const integration = integrations.find((i) => i.type === type);
+      return integration?.status === "CONNECTED" ? "✅" : "❌";
+    }
     const integration = integrations.find((i) => i.type === type);
     return integration?.status === "CONNECTED" ? "✅" : "❌";
   };

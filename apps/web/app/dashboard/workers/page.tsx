@@ -38,6 +38,16 @@ export default function WorkersPage() {
   const enqueue = async (path: string, source: string = "SHOPIFY") => {
     setLoading(true);
     try {
+      // Sync Orders (Shopify) uses integrations sync endpoint; others use workers
+      if (path === "order-sync" && source === "SHOPIFY") {
+        const res = await authFetch("/integrations/shopify/sync/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }) as { synced?: number; total_fetched?: number; message?: string };
+        alert(res?.message ?? `Synced ${res?.synced ?? 0} orders.`);
+        await loadJobs();
+        return;
+      }
       await authFetch(`/workers/${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
