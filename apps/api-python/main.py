@@ -3,7 +3,7 @@ LaCleoOmnia OMS - FastAPI Backend
 """
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi import status
 import uvicorn
@@ -12,6 +12,7 @@ import logging
 from app.routers import auth, channels, orders, inventory, products, warehouses, shipments, sync, config, webhooks, marketplaces, analytics, labels, workers, audit, users
 from app.database import engine, Base
 from app.config import settings
+from app.services.shopify_oauth import ShopifyOAuthService
 
 # Configure logging
 logging.basicConfig(
@@ -155,6 +156,32 @@ async def health():
         "production": settings.IS_PRODUCTION,
         "cloud": settings.IS_CLOUD
     }
+
+
+@app.get(
+    "/auth/shopify/callback",
+    response_class=PlainTextResponse,
+    summary="Shopify OAuth callback (HMAC verification only)",
+)
+async def auth_shopify_callback(request: Request):
+    """
+    Step 1: HMAC verification only.
+    Receives shop, hmac, timestamp, code from Shopify.
+    Verifies the request is from Shopify; no token exchange or DB yet.
+    """
+    raw_query = request.url.query or ""
+    if not raw_query:
+        return PlainTextResponse("Missing query parameters", status_code=status.HTTP_400_BAD_REQUEST)
+
+    if not settings.SHOPIFY_API_SECRET:
+        logger.warning("SHOPIFY_API_SECRET not set; cannot verify HMAC")
+        return PlainTextResponse("Invalid Shopify signature", status_code=status.HTTP_401_UNAUTHORIZED)
+
+    oauth_service = ShopifyOAuthService()
+    if not oauth_service.verify_hmac(raw_query):
+        return PlainTextResponse("Invalid Shopify signature", status_code=status.HTTP_401_UNAUTHORIZED)
+
+    return PlainTextResponse("Shopify callback verified successfully")
 
 @app.get("/api")
 async def root():
