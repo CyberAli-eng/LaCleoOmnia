@@ -24,6 +24,7 @@ export default function WorkersPage() {
       setJobs(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to load jobs:", err);
+      setJobs([]);
     }
   };
 
@@ -38,13 +39,14 @@ export default function WorkersPage() {
   const enqueue = async (path: string, source: string = "SHOPIFY") => {
     setLoading(true);
     try {
-      // Sync Orders (Shopify) uses integrations sync endpoint; others use workers
-      if (path === "order-sync" && source === "SHOPIFY") {
+      // Sync Orders and Sync Inventory (Shopify) both use unified sync endpoint
+      if ((path === "order-sync" || path === "inventory-sync") && source === "SHOPIFY") {
         const res = await authFetch("/integrations/shopify/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         }) as { orders_synced?: number; inventory_synced?: number; message?: string };
-        alert(res?.message ?? `Synced ${res?.orders_synced ?? 0} orders, ${res?.inventory_synced ?? 0} inventory.`);
+        const msg = res?.message ?? `Synced ${res?.orders_synced ?? 0} orders, ${res?.inventory_synced ?? 0} inventory.`;
+        alert(msg);
         await loadJobs();
         return;
       }
@@ -55,17 +57,18 @@ export default function WorkersPage() {
       });
       await loadJobs();
     } catch (err: any) {
-      alert(`Failed to enqueue job: ${err.message}`);
+      alert(err?.message ?? "Sync failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
+  // Backend uses QUEUED, RUNNING, SUCCESS, FAILED
   const jobStats = {
     total: jobs.length,
-    pending: jobs.filter((j) => j.status === "PENDING").length,
-    processing: jobs.filter((j) => j.status === "PROCESSING").length,
-    completed: jobs.filter((j) => j.status === "COMPLETED").length,
+    pending: jobs.filter((j) => j.status === "QUEUED" || j.status === "PENDING").length,
+    processing: jobs.filter((j) => j.status === "RUNNING" || j.status === "PROCESSING").length,
+    completed: jobs.filter((j) => j.status === "SUCCESS" || j.status === "COMPLETED").length,
     failed: jobs.filter((j) => j.status === "FAILED").length,
   };
 
@@ -161,11 +164,11 @@ export default function WorkersPage() {
                   <td className="py-3 px-4">
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        job.status === "COMPLETED"
+                        job.status === "SUCCESS" || job.status === "COMPLETED"
                           ? "bg-emerald-50 text-emerald-700"
                           : job.status === "FAILED"
                           ? "bg-red-50 text-red-700"
-                          : job.status === "PROCESSING"
+                          : job.status === "RUNNING" || job.status === "PROCESSING"
                           ? "bg-blue-50 text-blue-700"
                           : "bg-amber-50 text-amber-700"
                       }`}

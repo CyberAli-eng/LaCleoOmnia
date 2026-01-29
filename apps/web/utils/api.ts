@@ -51,20 +51,24 @@ export async function fetchFromApi(path: string, init?: RequestInit) {
             ...init,
         });
 
+        const text = await res.text();
         if (!res.ok) {
+            let msg = text || `Request failed with status ${res.status}`;
             try {
-                const data = await res.json();
-                throw new Error(data?.error || data?.message || `Request failed with status ${res.status}`);
-            } catch (err: any) {
-                if (err instanceof Error && err.message.includes('Request failed')) {
-                    throw err;
-                }
-                const text = await res.text();
-                throw new Error(text || `Request failed with status ${res.status}`);
+                const data = JSON.parse(text);
+                const d = data?.detail ?? data?.error ?? data?.message;
+                if (d != null) msg = typeof d === 'string' ? d : JSON.stringify(d);
+            } catch {
+                /* use msg as-is */
             }
+            throw new Error(msg);
         }
-
-        return res.json();
+        if (!text || text.trim() === '') return {};
+        try {
+            return JSON.parse(text);
+        } catch {
+            throw new Error('Invalid JSON response');
+        }
     } catch (error: any) {
         // Provide more helpful error messages
         if (error instanceof TypeError && error.message.includes('fetch')) {
