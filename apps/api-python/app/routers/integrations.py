@@ -21,6 +21,10 @@ from app.models import (
     OrderStatus,
     PaymentMode,
     FulfillmentStatus,
+    Product,
+    ProductVariant,
+    Warehouse,
+    Inventory,
 )
 from app.auth import get_current_user
 from app.services.shopify_service import (
@@ -121,6 +125,7 @@ async def shopify_sync_orders(
     Updates ShopifyIntegration.last_synced_at. Safe for real data: only inserts new orders.
     """
     integration = _get_shopify_integration(db)
+    channel, account = _get_or_create_shopify_channel_account(db, integration, current_user)
     try:
         raw_orders = await get_orders_raw(
             integration.shop_domain,
@@ -133,29 +138,6 @@ async def shopify_sync_orders(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to fetch orders from Shopify.",
         )
-
-    # Get or create Channel (SHOPIFY) and ChannelAccount for this user + shop
-    channel = db.query(Channel).filter(Channel.name == ChannelType.SHOPIFY).first()
-    if not channel:
-        channel = Channel(name=ChannelType.SHOPIFY, is_active=True)
-        db.add(channel)
-        db.flush()
-    account = db.query(ChannelAccount).filter(
-        ChannelAccount.channel_id == channel.id,
-        ChannelAccount.user_id == current_user.id,
-        ChannelAccount.shop_domain == integration.shop_domain,
-    ).first()
-    if not account:
-        account = ChannelAccount(
-            channel_id=channel.id,
-            user_id=current_user.id,
-            seller_name=integration.shop_domain,
-            shop_domain=integration.shop_domain,
-            status=ChannelAccountStatus.CONNECTED,
-        )
-        db.add(account)
-        db.flush()
-
     inserted = 0
     for o in raw_orders:
         shopify_id = str(o.get("id") or "")
@@ -210,3 +192,160 @@ async def shopify_sync_orders(
     integration.last_synced_at = datetime.now(timezone.utc)
     db.commit()
     return {"synced": inserted, "total_fetched": len(raw_orders), "message": f"Imported {inserted} new orders."}
+
+
+def _get_or_create_shopify_channel_account(db: Session, integration: ShopifyIntegration, current_user: User):
+    """Get or create Channel + ChannelAccount for this user + shop. Returns (channel, account)."""
+    channel = db.query(Channel).filter(Channel.name == ChannelType.SHOPIFY).first()
+    if not channel:
+        channel = Channel(name=ChannelType.SHOPIFY, is_active=True)
+        db.add(channel)
+        db.flush()
+    account = db.query(ChannelAccount).filter(
+        ChannelAccount.channel_id == channel.id,
+        ChannelAccount.user_id == current_user.id,
+        ChannelAccount.shop_domain == integration.shop_domain,
+    ).first()
+    if not account:
+        account = ChannelAccount(
+            channel_id=channel.id,
+            user_id=current_user.id,
+            seller_name=integration.shop_domain,
+            shop_domain=integration.shop_domain,
+            status=ChannelAccountStatus.CONNECTED,
+        )
+        db.add(account)
+        db.flush()
+    return channel, account
+
+
+@router.post("/shopify/sync")
+async def shopify_sync(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Unified initial sync: fetch orders + inventory from Shopify, save into DB, update last_synced_at.
+    Single source of truth. Idempotent for orders (skip existing); upsert inventory.
+    """
+    integration = _get_shopify_integration(db)
+    channel, account = _get_or_create_shopify_channel_account(db, integration, current_user)
+
+    # 1) Sync orders
+    try:
+        raw_orders = await get_orders_raw(
+            integration.shop_domain,
+            integration.access_token,
+            limit=250,
+        )
+    except Exception as e:
+        logger.exception("Shopify API error in sync (orders): %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to fetch orders from Shopify.",
+        )
+    orders_inserted = 0
+    for o in raw_orders:
+        shopify_id = str(o.get("id") or "")
+        if not shopify_id:
+            continue
+        if db.query(Order).filter(Order.channel_id == channel.id, Order.channel_order_id == shopify_id).first():
+            continue
+        billing = o.get("billing_address") or {}
+        first = (billing.get("first_name") or "").strip()
+        last = (billing.get("last_name") or "").strip()
+        customer_name = f"{first} {last}".strip() if (first or last) else (o.get("email") or "Customer")[:100]
+        customer_email = (o.get("email") or "").strip() or None
+        total = float(o.get("total_price", 0) or 0)
+        financial = (o.get("financial_status") or "").lower()
+        payment_mode = PaymentMode.PREPAID if financial == "paid" else PaymentMode.COD
+        order = Order(
+            channel_id=channel.id,
+            channel_account_id=account.id,
+            channel_order_id=shopify_id,
+            customer_name=customer_name[:255],
+            customer_email=customer_email[:255] if customer_email else None,
+            payment_mode=payment_mode,
+            order_total=Decimal(str(total)),
+            status=OrderStatus.NEW,
+        )
+        db.add(order)
+        db.flush()
+        for line in o.get("line_items") or []:
+            sku = (line.get("sku") or str(line.get("variant_id") or "") or "—")[:64]
+            title = (line.get("title") or "Item")[:255]
+            qty = int(line.get("quantity", 0) or 0)
+            price = float(line.get("price", 0) or 0)
+            db.add(OrderItem(
+                order_id=order.id,
+                sku=sku,
+                title=title,
+                qty=qty,
+                price=Decimal(str(price)),
+                fulfillment_status=FulfillmentStatus.PENDING,
+            ))
+        orders_inserted += 1
+
+    # 2) Sync inventory into DB (Option B: single source of truth)
+    try:
+        inv_list = await shopify_get_inventory(
+            integration.shop_domain,
+            integration.access_token,
+        )
+    except Exception as e:
+        logger.exception("Shopify API error in sync (inventory): %s", e)
+        inv_list = []
+    warehouse = db.query(Warehouse).filter(Warehouse.name == "Shopify").first()
+    if not warehouse:
+        warehouse = Warehouse(name="Shopify", city=None, state=None)
+        db.add(warehouse)
+        db.flush()
+    product = db.query(Product).filter(Product.title == "Shopify Products").first()
+    if not product:
+        product = Product(title="Shopify Products", brand=None, category=None)
+        db.add(product)
+        db.flush()
+    inventory_synced = 0
+    for row in inv_list:
+        sku = (row.get("sku") or "").strip() or "—"
+        if sku == "—":
+            continue
+        product_name = (row.get("product_name") or sku)[:255]
+        available = int(row.get("available", 0) or 0)
+        variant = db.query(ProductVariant).filter(ProductVariant.sku == sku).first()
+        if not variant:
+            variant = ProductVariant(
+                product_id=product.id,
+                sku=sku,
+                mrp=Decimal("0"),
+                selling_price=Decimal("0"),
+            )
+            db.add(variant)
+            db.flush()
+        inv = db.query(Inventory).filter(
+            Inventory.warehouse_id == warehouse.id,
+            Inventory.variant_id == variant.id,
+        ).first()
+        if not inv:
+            inv = Inventory(
+                warehouse_id=warehouse.id,
+                variant_id=variant.id,
+                total_qty=available,
+                reserved_qty=0,
+            )
+            db.add(inv)
+            inventory_synced += 1
+        else:
+            if inv.total_qty != available:
+                inv.total_qty = available
+                inventory_synced += 1
+
+    integration.last_synced_at = datetime.now(timezone.utc)
+    db.commit()
+    message = f"Synced {orders_inserted} new orders and {inventory_synced} inventory records."
+    return {
+        "orders_synced": orders_inserted,
+        "inventory_synced": inventory_synced,
+        "total_orders_fetched": len(raw_orders),
+        "message": message,
+    }

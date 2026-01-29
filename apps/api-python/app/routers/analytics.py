@@ -33,13 +33,14 @@ async def get_analytics_summary(
         else:
             orders = []
         
-        # Calculate summary
+        # Calculate summary from DB only (single source of truth)
         total_orders = len(orders)
+        total_revenue = sum(float(o.order_total or 0) for o in orders)
         recent_orders = [
             {
                 "id": order.id,
                 "externalId": order.channel_order_id,
-                "source": order.channel.name if order.channel else "Unknown",
+                "source": order.channel.name.value if order.channel else "Unknown",
                 "status": order.status.value if hasattr(order.status, 'value') else str(order.status),
                 "total": float(order.order_total) if order.order_total else 0.0,
                 "createdAt": order.created_at.isoformat() if order.created_at else None,
@@ -49,6 +50,7 @@ async def get_analytics_summary(
         
         return {
             "totalOrders": total_orders,
+            "totalRevenue": total_revenue,
             "recentOrders": recent_orders,
         }
     except Exception as e:

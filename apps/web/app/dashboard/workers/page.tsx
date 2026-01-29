@@ -40,11 +40,11 @@ export default function WorkersPage() {
     try {
       // Sync Orders (Shopify) uses integrations sync endpoint; others use workers
       if (path === "order-sync" && source === "SHOPIFY") {
-        const res = await authFetch("/integrations/shopify/sync/orders", {
+        const res = await authFetch("/integrations/shopify/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-        }) as { synced?: number; total_fetched?: number; message?: string };
-        alert(res?.message ?? `Synced ${res?.synced ?? 0} orders.`);
+        }) as { orders_synced?: number; inventory_synced?: number; message?: string };
+        alert(res?.message ?? `Synced ${res?.orders_synced ?? 0} orders, ${res?.inventory_synced ?? 0} inventory.`);
         await loadJobs();
         return;
       }

@@ -24,7 +24,7 @@ export default function DashboardPage() {
       ]);
 
       const orders = Array.isArray(ordersData?.orders) ? ordersData.orders : [];
-      const totalRevenue = orders.reduce((sum: number, o: any) => sum + (o.orderTotal || 0), 0);
+      const totalRevenue = (analytics?.totalRevenue != null ? analytics.totalRevenue : orders.reduce((sum: number, o: any) => sum + (o.orderTotal || 0), 0)) as number;
       const pendingConfirm = orders.filter((o: any) => o.status === "NEW" || o.status === "HOLD").length;
       const pendingShipment = orders.filter((o: any) => o.status === "CONFIRMED" || o.status === "PACKED").length;
       const activeIntegrations = integrations?.integrations?.length || 0;

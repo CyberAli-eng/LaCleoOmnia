@@ -240,11 +240,16 @@ function IntegrationsPageContent() {
                     <>
                       <button
                         onClick={async () => {
-                          setLoading("sync-orders");
+                          setLoading("sync");
                           setStatus(null);
                           try {
-                            const res = await authFetch("/integrations/shopify/sync/orders", { method: "POST" }) as { synced?: number; total_fetched?: number; message?: string };
-                            setStatus(res?.message ?? `Synced ${res?.synced ?? 0} new orders.`);
+                            const res = await authFetch("/integrations/shopify/sync", { method: "POST" }) as {
+                              orders_synced?: number;
+                              inventory_synced?: number;
+                              total_orders_fetched?: number;
+                              message?: string;
+                            };
+                            setStatus(res?.message ?? `Synced ${res?.orders_synced ?? 0} orders, ${res?.inventory_synced ?? 0} inventory.`);
                             setStatusType("success");
                           } catch (err: any) {
                             setStatus(`❌ Sync failed: ${err.message || "Unknown error"}`);
@@ -253,10 +258,10 @@ function IntegrationsPageContent() {
                             setLoading(null);
                           }
                         }}
-                        disabled={loading === "sync-orders"}
+                        disabled={loading === "sync"}
                         className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                       >
-                        {loading === "sync-orders" ? "Syncing..." : "Sync Shopify Orders"}
+                        {loading === "sync" ? "Syncing..." : "Sync Shopify"}
                       </button>
                       {(integration?.id) && (
                         <button
