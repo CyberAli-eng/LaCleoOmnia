@@ -40,7 +40,7 @@ async def list_worker_jobs(
                 "lastError": getattr(job, "error_message", None),
                 "createdAt": job.created_at.isoformat() if job.created_at else None,
                 "updatedAt": (lambda t: t.isoformat() if t else None)(
-                    job.finished_at or job.completed_at or job.started_at or job.created_at
+                    job.finished_at or job.started_at or job.created_at
                 ),
             }
             for job in jobs

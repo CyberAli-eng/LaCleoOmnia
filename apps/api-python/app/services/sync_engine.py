@@ -33,7 +33,7 @@ class SyncEngine:
                 result = await import_shopify_orders(self.db, account)
                 
                 sync_job.status = SyncJobStatus.COMPLETED
-                sync_job.completed_at = datetime.utcnow()
+                sync_job.finished_at = datetime.utcnow()
                 sync_job.records_processed = result.get("imported", 0)
                 sync_job.records_failed = result.get("failed", 0)
                 
@@ -57,7 +57,7 @@ class SyncEngine:
         
         except Exception as e:
             sync_job.status = SyncJobStatus.FAILED
-            sync_job.completed_at = datetime.utcnow()
+            sync_job.finished_at = datetime.utcnow()
             sync_job.error_message = str(e)
             
             # Log error
@@ -101,7 +101,7 @@ class SyncEngine:
                 # and updating the Inventory table
                 
                 sync_job.status = SyncJobStatus.COMPLETED
-                sync_job.completed_at = datetime.utcnow()
+                sync_job.finished_at = datetime.utcnow()
                 sync_job.records_processed = len(inventory_levels)
                 
                 log = SyncLog(
@@ -122,7 +122,7 @@ class SyncEngine:
         
         except Exception as e:
             sync_job.status = SyncJobStatus.FAILED
-            sync_job.completed_at = datetime.utcnow()
+            sync_job.finished_at = datetime.utcnow()
             sync_job.error_message = str(e)
             
             log = SyncLog(
@@ -174,7 +174,7 @@ class SyncEngine:
                 "jobType": job.job_type.value,
                 "status": job.status.value,
                 "startedAt": job.started_at.isoformat() if job.started_at else None,
-                "completedAt": job.completed_at.isoformat() if job.completed_at else None,
+                "completedAt": job.finished_at.isoformat() if job.finished_at else None,
                 "recordsProcessed": job.records_processed,
                 "recordsFailed": job.records_failed,
                 "errorMessage": job.error_message
