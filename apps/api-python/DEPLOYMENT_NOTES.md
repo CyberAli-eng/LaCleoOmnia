@@ -34,23 +34,32 @@ Set these in your Render dashboard:
 pip install -r requirements.txt
 ```
 
-## Start Command
+## Start Command (runs migrations then starts – works on free tier)
+
+Use this so the DB is migrated automatically on every deploy, **without** needing Pre-Deploy or Release Command (which are paid on Render free tier):
+
+```bash
+alembic upgrade head && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+```
+
+- **First:** `alembic upgrade head` updates the database (adds missing columns like `orders.shipping_address`, `orders.billing_address`). Safe to run every time (idempotent).
+- **Then:** the app starts as usual.
+
+**Render Dashboard:** Build & Deploy → **Start Command** → paste the line above → Save.
+
+If you prefer to run migrations only once and then use the plain start command, set **Start Command** back to:
 
 ```bash
 python -m uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
-**Note:** The system automatically detects Render and uses the correct host/port settings.
-
 ## Database Setup
 
-After first deployment, run the seed script:
+After first deployment, run the seed script (if you use it):
 
 ```bash
 python seed.py
 ```
-
-Or connect to your database and run migrations manually.
 
 ## CORS Configuration
 

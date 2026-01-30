@@ -6,10 +6,8 @@ Create Date: 2025-01-24
 
 """
 from alembic import op
-import sqlalchemy as sa
 
 
-# revision identifiers, used by Alembic.
 revision = "add_order_address"
 down_revision = None
 branch_labels = None
@@ -17,8 +15,15 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("orders", sa.Column("shipping_address", sa.String(), nullable=True))
-    op.add_column("orders", sa.Column("billing_address", sa.String(), nullable=True))
+    conn = op.get_bind()
+    if conn.dialect.name == "postgresql":
+        # Idempotent: safe to run multiple times (e.g. on every deploy)
+        op.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address VARCHAR")
+        op.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS billing_address VARCHAR")
+    else:
+        import sqlalchemy as sa
+        op.add_column("orders", sa.Column("shipping_address", sa.String(), nullable=True))
+        op.add_column("orders", sa.Column("billing_address", sa.String(), nullable=True))
 
 
 def downgrade() -> None:
