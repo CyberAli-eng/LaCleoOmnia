@@ -270,6 +270,23 @@ async def shopify_sync(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to fetch orders from Shopify.",
         )
+    def _format_address(addr: dict | None) -> str | None:
+        if not addr or not isinstance(addr, dict):
+            return None
+        parts = []
+        if (addr.get("address1") or "").strip():
+            parts.append((addr.get("address1") or "").strip())
+        if (addr.get("address2") or "").strip():
+            parts.append((addr.get("address2") or "").strip())
+        city = (addr.get("city") or "").strip()
+        prov = (addr.get("province_code") or addr.get("province") or "").strip()
+        zip_ = (addr.get("zip") or "").strip()
+        country = (addr.get("country") or "").strip()
+        if city or prov or zip_ or country:
+            parts.append(", ".join(p for p in [city, prov, zip_, country] if p))
+        line = ", ".join(parts)
+        return line[:1024] if line else None
+
     orders_inserted = 0
     for o in raw_orders:
         shopify_id = str(o.get("id") or "")
@@ -285,12 +302,16 @@ async def shopify_sync(
         total = float(o.get("total_price", 0) or 0)
         financial = (o.get("financial_status") or "").lower()
         payment_mode = PaymentMode.PREPAID if financial == "paid" else PaymentMode.COD
+        shipping_addr = _format_address(o.get("shipping_address"))
+        billing_addr = _format_address(o.get("billing_address"))
         order = Order(
             channel_id=channel.id,
             channel_account_id=account.id,
             channel_order_id=shopify_id,
             customer_name=customer_name[:255],
             customer_email=customer_email[:255] if customer_email else None,
+            shipping_address=shipping_addr,
+            billing_address=billing_addr,
             payment_mode=payment_mode,
             order_total=Decimal(str(total)),
             status=OrderStatus.NEW,

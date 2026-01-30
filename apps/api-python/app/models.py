@@ -199,6 +199,8 @@ class Order(Base):
     channel_order_id = Column("channel_order_id", String, nullable=False)
     customer_name = Column("customer_name", String, nullable=False)
     customer_email = Column("customer_email", String, nullable=True)
+    shipping_address = Column("shipping_address", String, nullable=True)
+    billing_address = Column("billing_address", String, nullable=True)
     payment_mode = Column("payment_mode", SQLEnum(PaymentMode), nullable=False)
     order_total = Column("order_total", Numeric(10, 2), nullable=False)
     status = Column(SQLEnum(OrderStatus), default=OrderStatus.NEW)

@@ -182,13 +182,17 @@ async def get_inventory(shop_domain: str, access_token: str) -> list[dict]:
         except Exception as e:
             logger.warning("Could not fetch locations for inventory_levels: %s", e)
         if not location_ids:
-            logger.warning("No locations returned; inventory_levels may be empty. Ensure read_locations scope.")
+            logger.warning("No locations returned; will try inventory_item_ids fallback.")
 
         try:
-            # Pass up to 50 location_ids (API limit per request)
             params: dict = {"limit": 250}
             if location_ids:
                 params["location_ids"] = ",".join(str(x) for x in location_ids[:50])
+            else:
+                # Fallback: use inventory_item_ids (Shopify allows either)
+                item_ids = [it.get("id") for it in items if isinstance(it, dict) and it.get("id") is not None][:250]
+                if item_ids:
+                    params["inventory_item_ids"] = ",".join(str(x) for x in item_ids)
             levels_response = await client.get(
                 f"{base}/inventory_levels.json",
                 params=params,
