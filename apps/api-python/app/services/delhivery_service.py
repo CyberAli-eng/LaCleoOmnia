@@ -198,9 +198,10 @@ class DelhiveryClient:
                 db.rollback()
 
 
-async def sync_delhivery_shipments(db: Any) -> dict:
+async def sync_delhivery_shipments(db: Any, api_key: Optional[str] = None) -> dict:
     """
     Sync all active shipments (status not DELIVERED/RTO_DONE/LOST) from Delhivery.
+    Uses api_key if provided, else global DELHIVERY_API_KEY.
     Updates Shipment.status, Shipment.last_synced_at, ShipmentTracking; triggers profit recompute.
     Returns { synced: int, updated: int, errors: list }.
     """
@@ -216,7 +217,7 @@ async def sync_delhivery_shipments(db: Any) -> dict:
     )
     synced = 0
     errors: list[str] = []
-    client = get_client()
+    client = get_client(api_key) if api_key else get_client()
     for s in active:
         awb = (s.awb_number or "").strip()
         if not awb:

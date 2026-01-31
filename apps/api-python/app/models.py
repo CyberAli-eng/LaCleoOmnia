@@ -411,6 +411,21 @@ class ShipmentTracking(Base):
     shipment = relationship("Shipment", backref=backref("tracking", uselist=False))
 
 
+class ProviderCredential(Base):
+    """Per-user credentials for integration providers (e.g. Delhivery API key). One row per user per provider."""
+    __tablename__ = "provider_credentials"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column("user_id", String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider_id = Column("provider_id", String, nullable=False, index=True)  # e.g. delhivery, shiprocket
+    value_encrypted = Column("value_encrypted", String, nullable=True)  # encrypted JSON: { "apiKey": "..." }
+    created_at = Column("created_at", DateTime, server_default=func.now())
+    updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint("user_id", "provider_id", name="uq_provider_credentials_user_provider"),)
+    user = relationship("User")
+
+
 class WebhookEvent(Base):
     """Persisted Shopify (and future) webhook events. Verify HMAC before saving."""
     __tablename__ = "webhook_events"

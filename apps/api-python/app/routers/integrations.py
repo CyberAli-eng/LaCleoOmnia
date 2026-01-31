@@ -1,11 +1,16 @@
 """
 Integration status and data endpoints - Shopify orders/inventory from Admin API.
+Catalog and provider status/connect are dynamic; no hardcoding in frontend.
 Never expose access_token to frontend.
 """
+import json
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from typing import Any
+
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -22,6 +27,7 @@ from app.models import (
     OrderStatus,
     PaymentMode,
     FulfillmentStatus,
+    ProviderCredential,
 )
 from app.auth import get_current_user
 from app.services.shopify_service import (
@@ -33,11 +39,175 @@ from app.services.shopify_service import (
 from app.services.shopify_inventory_persist import persist_shopify_inventory
 from app.services.profit_calculator import compute_profit_for_order
 from app.services.shopify import ShopifyService
+from app.services.credentials import encrypt_token, decrypt_token
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# Single source of truth for integration catalog (sections + providers). Add new providers here.
+def _get_integration_catalog() -> dict:
+    return {
+        "sections": [
+            {
+                "id": "commerce",
+                "title": "Commerce & Channels",
+                "description": "Connect your sales channels and sync orders",
+                "providers": [
+                    {
+                        "id": "SHOPIFY",
+                        "name": "Shopify",
+                        "icon": "🛍️",
+                        "color": "blue",
+                        "connectType": "oauth",
+                        "statusEndpoint": "/integrations/shopify/status",
+                        "oauthInstallEndpoint": "/channels/shopify/oauth/install",
+                        "oauthInstallQueryKey": "shop",
+                        "actions": [
+                            {"id": "sync", "label": "Sync Shopify", "method": "POST", "endpoint": "/integrations/shopify/sync", "primary": True},
+                            {"id": "registerWebhooks", "label": "Register webhooks", "method": "POST", "endpoint": "/integrations/shopify/register-webhooks"},
+                            {"id": "webhooks", "label": "View webhooks", "href": "/dashboard/webhooks"},
+                        ],
+                        "description": "Sync orders and inventory from your Shopify store",
+                    },
+                    {
+                        "id": "AMAZON",
+                        "name": "Amazon",
+                        "icon": "📦",
+                        "color": "amber",
+                        "connectType": "manual",
+                        "statusEndpoint": "/config/status",
+                        "actions": [],
+                        "description": "Connect your Amazon seller account",
+                    },
+                    {
+                        "id": "FLIPKART",
+                        "name": "Flipkart",
+                        "icon": "🛒",
+                        "color": "purple",
+                        "connectType": "manual",
+                        "statusEndpoint": "/config/status",
+                        "actions": [],
+                        "description": "Connect your Flipkart seller account",
+                    },
+                    {
+                        "id": "MYNTRA",
+                        "name": "Myntra",
+                        "icon": "👕",
+                        "color": "pink",
+                        "connectType": "manual",
+                        "statusEndpoint": "/config/status",
+                        "actions": [],
+                        "description": "Connect your Myntra seller account",
+                    },
+                ],
+            },
+            {
+                "id": "logistics",
+                "title": "Logistics & Supply Chain",
+                "description": "Connect couriers and fulfillment for tracking and RTO",
+                "providers": [
+                    {
+                        "id": "delhivery",
+                        "name": "Delhivery",
+                        "icon": "🚚",
+                        "color": "teal",
+                        "connectType": "api_key",
+                        "statusEndpoint": "/integrations/providers/delhivery/status",
+                        "connectEndpoint": "/integrations/providers/delhivery/connect",
+                        "connectBodyKey": "apiKey",
+                        "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "Your Delhivery API key"}],
+                        "actions": [
+                            {"id": "syncShipments", "label": "Sync shipments", "method": "POST", "endpoint": "/shipments/sync", "primary": True},
+                        ],
+                        "description": "Track shipments, RTO and lost status. Sync AWB status every 15 min.",
+                    },
+                ],
+            },
+        ],
+    }
+
+
+@router.get("/catalog")
+async def get_integration_catalog(
+    current_user: User = Depends(get_current_user),
+):
+    """Return dynamic integration catalog (sections + providers). No hardcoding in frontend."""
+    return _get_integration_catalog()
+
+
+# Providers that use ProviderCredential + optional env fallback. Add new api_key providers here.
+CREDENTIAL_PROVIDER_ENV_KEYS: dict[str, str] = {"delhivery": "DELHIVERY_API_KEY"}
+
+
+def _get_provider_credential_status(db: Session, user_id: int, provider_id: str) -> dict:
+    """Return connected status for a credential-based provider (user key or env)."""
+    cred = db.query(ProviderCredential).filter(
+        ProviderCredential.user_id == user_id,
+        ProviderCredential.provider_id == provider_id,
+    ).first()
+    if cred and cred.value_encrypted:
+        try:
+            dec = decrypt_token(cred.value_encrypted)
+            data = json.loads(dec) if isinstance(dec, str) and dec.strip().startswith("{") else {"apiKey": dec}
+            if data and any(v for v in data.values() if isinstance(v, str) and v.strip()):
+                return {"connected": True, "source": "user", "configured": True}
+        except Exception:
+            pass
+    env_key = CREDENTIAL_PROVIDER_ENV_KEYS.get(provider_id)
+    if env_key:
+        global_val = getattr(settings, env_key, None) or ""
+        if isinstance(global_val, str) and global_val.strip():
+            return {"connected": True, "source": "env", "configured": True}
+    return {"connected": False, "source": None, "configured": False}
+
+
+@router.get("/providers/{provider_id}/status")
+async def get_provider_status(
+    provider_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return connection status for credential-based providers (e.g. delhivery). Driven by catalog statusEndpoint."""
+    if provider_id not in CREDENTIAL_PROVIDER_ENV_KEYS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
+    return _get_provider_credential_status(db, current_user.id, provider_id)
+
+
+@router.post("/providers/{provider_id}/connect")
+async def connect_provider(
+    provider_id: str,
+    body: dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Save API key/credentials for the given provider. Body keys come from catalog connectFormFields (e.g. apiKey)."""
+    if provider_id not in CREDENTIAL_PROVIDER_ENV_KEYS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
+    if not body or not any(str(v).strip() for v in body.values() if v is not None):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one credential value is required")
+    value_json = json.dumps(body)
+    encrypted = encrypt_token(value_json)
+    cred = db.query(ProviderCredential).filter(
+        ProviderCredential.user_id == current_user.id,
+        ProviderCredential.provider_id == provider_id,
+    ).first()
+    if cred:
+        cred.value_encrypted = encrypted
+        db.commit()
+        db.refresh(cred)
+    else:
+        cred = ProviderCredential(
+            user_id=current_user.id,
+            provider_id=provider_id,
+            value_encrypted=encrypted,
+        )
+        db.add(cred)
+        db.commit()
+        db.refresh(cred)
+    return {"connected": True, "message": "Credentials saved"}
 
 
 def _get_shopify_integration(db: Session):

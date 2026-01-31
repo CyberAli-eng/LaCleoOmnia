@@ -135,13 +135,33 @@ async def create_shipment(
     return _shipment_response(shipment)
 
 
+def _get_delhivery_api_key(db: Session, user_id: str) -> str | None:
+    """Return current user's Delhivery API key if set, else None (service will use global)."""
+    from app.models import ProviderCredential
+    from app.services.credentials import decrypt_token
+    import json
+    cred = db.query(ProviderCredential).filter(
+        ProviderCredential.user_id == user_id,
+        ProviderCredential.provider_id == "delhivery",
+    ).first()
+    if not cred or not cred.value_encrypted:
+        return None
+    try:
+        dec = decrypt_token(cred.value_encrypted)
+        data = json.loads(dec) if isinstance(dec, str) and dec.strip().startswith("{") else {"apiKey": dec}
+        return data.get("apiKey") or None
+    except Exception:
+        return None
+
+
 @router.post("/sync")
 async def sync_shipments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Sync all active Delhivery shipments (fetch status, update DB, recompute profit). Call every 15 min or on demand."""
-    result = await sync_delhivery_shipments(db)
+    """Sync all active Delhivery shipments (fetch status, update DB, recompute profit). Uses user API key or global."""
+    api_key = _get_delhivery_api_key(db, current_user.id)
+    result = await sync_delhivery_shipments(db, api_key=api_key)
     return {
         "message": f"Synced {result['synced']} shipments",
         "synced": result["synced"],
