@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 import uvicorn
 import logging
 
-from app.routers import auth, channels, orders, inventory, products, warehouses, shipments, sync, config, webhooks, marketplaces, analytics, labels, workers, audit, users, integrations
+from app.routers import auth, channels, orders, inventory, products, warehouses, shipments, sync, config, webhooks, marketplaces, analytics, labels, workers, audit, users, integrations, sku_costs, profit
 from app.database import engine, Base, get_db
 from app.config import settings
 from app.services.shopify_oauth import ShopifyOAuthService
@@ -149,6 +149,8 @@ app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(integrations.router, prefix="/api/integrations", tags=["integrations"])
+app.include_router(sku_costs.router, prefix="/api/sku-costs", tags=["sku-costs"])
+app.include_router(profit.router, prefix="/api/profit", tags=["profit"])
 
 @app.get("/health")
 async def health():

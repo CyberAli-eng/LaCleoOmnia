@@ -1,7 +1,9 @@
 """
 Shopify Admin API service - authenticated requests.
 Uses API version 2024-01 (stable). Never expose access_token to frontend.
+Supports cursor pagination (Link header) so we fetch all products, not just first 250.
 """
+import re
 import httpx
 import logging
 from typing import Any, Optional
@@ -9,6 +11,20 @@ from typing import Any, Optional
 # Use 2024-01 (stable). 2026-01 can be unstable and cause inventory issues.
 SHOPIFY_API_VERSION = "2024-01"
 logger = logging.getLogger(__name__)
+
+
+def _parse_link_next(link_header: Optional[str]) -> Optional[str]:
+    """Parse Link header; return URL for rel=next if present. Shopify uses cursor pagination."""
+    if not link_header:
+        return None
+    # Format: <url>; rel=next, <url>; rel=previous
+    for part in link_header.split(","):
+        part = part.strip()
+        if "; rel=next" in part.lower():
+            match = re.search(r"<([^>]+)>", part)
+            if match:
+                return match.group(1).strip()
+    return None
 
 
 def _log_shopify_response(method: str, url: str, status: int, body_preview: str = "") -> None:
@@ -118,7 +134,7 @@ async def get_orders_raw(shop_domain: str, access_token: str, limit: int = 250) 
 
 async def get_products(shop_domain: str, access_token: str, limit: int = 250) -> list[dict]:
     """
-    Fetch products from Shopify Admin API.
+    Fetch one page of products from Shopify Admin API.
     GET /admin/api/2024-01/products.json
     """
     url = f"{_base_url(shop_domain)}/products.json"
@@ -132,6 +148,39 @@ async def get_products(shop_domain: str, access_token: str, limit: int = 250) ->
         response.raise_for_status()
     data = response.json()
     return data.get("products", [])
+
+
+async def get_products_all_pages(shop_domain: str, access_token: str, page_limit: int = 250) -> list[dict]:
+    """
+    Fetch all products using cursor pagination (Link header).
+    Stops when response has no rel=next or fewer than page_limit items.
+    """
+    base = _base_url(shop_domain)
+    h = _headers(access_token)
+    url = f"{base}/products.json"
+    params: dict = {"limit": page_limit}
+    all_products: list[dict] = []
+    page = 0
+    async with httpx.AsyncClient() as client:
+        while True:
+            page += 1
+            response = await client.get(url, params=params, headers=h, timeout=30.0)
+            body = response.text[:300] if response.text else ""
+            _log_shopify_response("GET", url, response.status_code, body)
+            response.raise_for_status()
+            data = response.json()
+            products = data.get("products") or []
+            all_products.extend(products)
+            logger.info("Shopify products page %s: got %s (total so far: %s)", page, len(products), len(all_products))
+            if len(products) < page_limit:
+                break
+            next_url = _parse_link_next(response.headers.get("link"))
+            if not next_url:
+                break
+            url = next_url
+            params = {}  # page_info URL already has params; do not add extra
+    logger.info("Shopify products: got %s product(s) across %s page(s)", len(all_products), page)
+    return all_products
 
 
 async def get_locations(shop_domain: str, access_token: str) -> list[dict]:
@@ -199,18 +248,10 @@ async def get_inventory(shop_domain: str, access_token: str) -> list[dict]:
     base = _base_url(shop_domain)
     h = _headers(access_token)
 
-    # Step 1: Get products
+    # Step 1: Get all products (paginated; not just first 250)
     products: list[dict] = []
     try:
-        url = f"{base}/products.json"
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params={"limit": 250}, headers=h, timeout=30.0)
-            body = response.text[:300] if response.text else ""
-            _log_shopify_response("GET", url, response.status_code, body)
-            response.raise_for_status()
-        data = response.json()
-        products = data.get("products") or []
-        logger.info("Shopify products: got %s product(s)", len(products))
+        products = await get_products_all_pages(shop_domain, access_token, page_limit=250)
     except (httpx.HTTPStatusError, Exception) as e:
         logger.warning("Shopify products failed (read_products scope): %s", e)
         return []

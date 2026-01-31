@@ -31,6 +31,7 @@ from app.services.shopify_service import (
     get_access_scopes,
 )
 from app.services.shopify_inventory_persist import persist_shopify_inventory
+from app.services.profit_calculator import compute_profit_for_order
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +345,7 @@ async def shopify_sync(
         return line[:1024] if line else None
 
     orders_inserted = 0
+    new_order_ids: list[str] = []
     for o in raw_orders:
         shopify_id = str(o.get("id") or "")
         if not shopify_id:
@@ -399,6 +401,13 @@ async def shopify_sync(
     except Exception as e:
         logger.warning("Shopify inventory fetch in sync failed: %s", e)
     inventory_synced = persist_shopify_inventory(db, integration.shop_domain, inv_list or [])
+
+    # 3) Recompute profit for newly synced orders (uses sku_costs when present)
+    for oid in new_order_ids:
+        try:
+            compute_profit_for_order(db, oid)
+        except Exception as e:
+            logger.warning("Profit recompute for order %s failed: %s", oid, e)
 
     integration.last_synced_at = datetime.now(timezone.utc)
     db.commit()

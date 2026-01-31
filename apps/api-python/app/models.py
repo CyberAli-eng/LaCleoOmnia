@@ -2,7 +2,7 @@
 SQLAlchemy models matching the Prisma schema
 """
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Numeric, Enum as SQLEnum, JSON, UniqueConstraint
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
 from app.database import Base
 import enum
@@ -334,7 +334,7 @@ class ShopifyIntegration(Base):
 
 
 class ShopifyInventory(Base):
-    """Cached inventory from Shopify. Synced by worker; GET /shopify/inventory reads from here (no live Shopify call)."""
+    """Cached inventory from Shopify (master source). Synced by worker; GET /shopify/inventory reads from here."""
     __tablename__ = "shopify_inventory"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -348,3 +348,37 @@ class ShopifyInventory(Base):
     synced_at = Column("synced_at", DateTime, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (UniqueConstraint("shop_domain", "sku", "location_id", name="shopify_inventory_shop_sku_loc_unique"),)
+
+
+class SkuCost(Base):
+    """SKU cost engine: product cost, packaging, box, inbound freight. Required for profit calculation."""
+    __tablename__ = "sku_costs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    sku = Column("sku", String, unique=True, nullable=False, index=True)
+    product_cost = Column("product_cost", Numeric(12, 2), default=0, nullable=False)
+    packaging_cost = Column("packaging_cost", Numeric(12, 2), default=0, nullable=False)
+    box_cost = Column("box_cost", Numeric(12, 2), default=0, nullable=False)
+    inbound_cost = Column("inbound_cost", Numeric(12, 2), default=0, nullable=False)
+    created_at = Column("created_at", DateTime, server_default=func.now())
+    updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class OrderProfit(Base):
+    """Profit per order. Recomputed on order create/update/refund. Core of profit engine."""
+    __tablename__ = "order_profit"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    order_id = Column("order_id", String, ForeignKey("orders.id", ondelete="CASCADE"), unique=True, nullable=False)
+    revenue = Column("revenue", Numeric(12, 2), default=0, nullable=False)
+    product_cost = Column("product_cost", Numeric(12, 2), default=0, nullable=False)
+    packaging_cost = Column("packaging_cost", Numeric(12, 2), default=0, nullable=False)
+    shipping_cost = Column("shipping_cost", Numeric(12, 2), default=0, nullable=False)
+    marketing_cost = Column("marketing_cost", Numeric(12, 2), default=0, nullable=False)
+    payment_fee = Column("payment_fee", Numeric(12, 2), default=0, nullable=False)
+    net_profit = Column("net_profit", Numeric(12, 2), default=0, nullable=False)
+    status = Column("status", String, default="computed", nullable=False)  # computed | partial | missing_costs
+    created_at = Column("created_at", DateTime, server_default=func.now())
+    updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
+
+    order = relationship("Order", backref=backref("profit", uselist=False))

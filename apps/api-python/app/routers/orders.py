@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from typing import Optional
 from datetime import datetime
 from app.database import get_db
-from app.models import Order, OrderItem, OrderStatus, User, FulfillmentStatus, Warehouse, Inventory, InventoryMovement, InventoryMovementType, Channel, ChannelAccount, AuditLog, AuditLogAction
+from app.models import Order, OrderItem, OrderStatus, User, FulfillmentStatus, Warehouse, Inventory, InventoryMovement, InventoryMovementType, Channel, ChannelAccount, AuditLog, AuditLogAction, OrderProfit
 from app.auth import get_current_user
 from app.schemas import OrderResponse, ShipOrderRequest
 from decimal import Decimal
@@ -113,7 +113,9 @@ async def get_order(
     # Get shipment if exists
     from app.models import Shipment
     shipment = db.query(Shipment).filter(Shipment.order_id == order.id).first()
-    
+    # Get profit if computed
+    profit = db.query(OrderProfit).filter(OrderProfit.order_id == order.id).first()
+
     return {
         "order": {
             "id": order.id,
@@ -146,7 +148,17 @@ async def get_order(
                 "labelUrl": shipment.label_url,
                 "status": shipment.status.value,
                 "shippedAt": shipment.shipped_at.isoformat() if shipment.shipped_at else None,
-            } if shipment else None
+            } if shipment else None,
+            "profit": {
+                "revenue": float(profit.revenue),
+                "productCost": float(profit.product_cost),
+                "packagingCost": float(profit.packaging_cost),
+                "shippingCost": float(profit.shipping_cost),
+                "marketingCost": float(profit.marketing_cost),
+                "paymentFee": float(profit.payment_fee),
+                "netProfit": float(profit.net_profit),
+                "status": profit.status,
+            } if profit else None
         }
     }
 

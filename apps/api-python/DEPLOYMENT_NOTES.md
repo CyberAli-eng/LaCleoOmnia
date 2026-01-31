@@ -81,6 +81,14 @@ curl "http://localhost:8000/api/integrations/shopify/inventory?refresh=true" -H 
 
 If you get 500/502 on inventory: check scopes (`read_products`, `read_inventory`, `read_locations`), reinstall the app, and check server logs for the exact Shopify API URL/status/error.
 
+## Profit engine (SKU costs + order_profit)
+
+- **shopify_inventory** is the master source for inventory: Fetch → Normalize → UPSERT → Read DB → Return. UI reads from DB, not live Shopify.
+- **sku_costs**: Admin CRUD at `/api/sku-costs`. Fields: sku, product_cost, packaging_cost, box_cost, inbound_cost. Required for profit.
+- **order_profit**: One row per order. Computed on order sync and on demand. Formula: net_profit = revenue - product_cost - packaging - shipping - marketing - payment_fee.
+- **Recompute**: `POST /api/profit/recompute` (all user orders) or `POST /api/profit/recompute?order_id=...` (one order). Call after updating sku_costs.
+- **Order detail**: `GET /api/orders/{id}` includes `profit` when computed (revenue, productCost, netProfit, status).
+
 ## Database Setup
 
 After first deployment, run the seed script (if you use it):
