@@ -21,7 +21,7 @@ export default function DashboardPage() {
         authFetch("/config/status").catch(() => ({ integrations: [], subscriptions: [] })),
         authFetch("/inventory").catch(() => []),
         authFetch("/sync/jobs").catch(() => ({ jobs: [] })),
-        authFetch("/analytics/profit-summary").catch(() => ({ revenue: 0, netProfit: 0, marginPercent: 0, lossCount: 0, lossAmount: 0, rtoCount: 0, rtoAmount: 0 })),
+        authFetch("/analytics/profit-summary").catch(() => ({ revenue: 0, netProfit: 0, marginPercent: 0, lossCount: 0, lossAmount: 0, rtoCount: 0, rtoAmount: 0, lostCount: 0, lostAmount: 0, courierLossPercent: 0 })),
       ]);
 
       const orders = Array.isArray(ordersData?.orders) ? ordersData.orders : [];
@@ -65,6 +65,9 @@ export default function DashboardPage() {
         lossAmount: profitSummary?.lossAmount ?? 0,
         rtoCount: profitSummary?.rtoCount ?? 0,
         rtoAmount: profitSummary?.rtoAmount ?? 0,
+        lostCount: profitSummary?.lostCount ?? 0,
+        lostAmount: profitSummary?.lostAmount ?? 0,
+        courierLossPercent: profitSummary?.courierLossPercent ?? 0,
       });
     } catch (err) {
       console.error("Failed to load dashboard:", err);
@@ -160,17 +163,41 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* RTO / Loss */}
+        {/* RTO / Lost / Courier Loss */}
         <div className="rounded-lg border border-slate-200 bg-white p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-500">RTO / Loss</p>
+              <p className="text-sm text-slate-500">RTO Loss</p>
               <p className="mt-2 text-2xl font-bold text-amber-600">
-                {(stats?.lossCount ?? 0)} orders · ${(stats?.lossAmount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                ${(stats?.rtoAmount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </p>
-              <p className="mt-1 text-xs text-slate-400">Negative profit · RTO when linked</p>
+              <p className="mt-1 text-xs text-slate-400">{(stats?.rtoCount ?? 0)} orders</p>
             </div>
-            <div className="text-3xl">⚠️</div>
+            <div className="text-3xl">↩️</div>
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-slate-500">Lost Loss</p>
+              <p className="mt-2 text-2xl font-bold text-red-600">
+                ${(stats?.lostAmount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">{(stats?.lostCount ?? 0)} orders</p>
+            </div>
+            <div className="text-3xl">❌</div>
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-slate-500">Courier Loss %</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                {(stats?.courierLossPercent ?? 0).toFixed(1)}%
+              </p>
+              <p className="mt-1 text-xs text-slate-400">RTO+Lost / Revenue</p>
+            </div>
+            <div className="text-3xl">%</div>
           </div>
         </div>
 

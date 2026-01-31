@@ -147,16 +147,25 @@ async def get_order(
                 "trackingUrl": shipment.tracking_url,
                 "labelUrl": shipment.label_url,
                 "status": shipment.status.value,
+                "forwardCost": float(getattr(shipment, "forward_cost", None) or 0),
+                "reverseCost": float(getattr(shipment, "reverse_cost", None) or 0),
                 "shippedAt": shipment.shipped_at.isoformat() if shipment.shipped_at else None,
+                "lastSyncedAt": (lambda x: x.isoformat() if x else None)(getattr(shipment, "last_synced_at", None)),
             } if shipment else None,
             "profit": {
                 "revenue": float(profit.revenue),
                 "productCost": float(profit.product_cost),
                 "packagingCost": float(profit.packaging_cost),
                 "shippingCost": float(profit.shipping_cost),
+                "shippingForward": float(getattr(profit, "shipping_forward", 0) or 0),
+                "shippingReverse": float(getattr(profit, "shipping_reverse", 0) or 0),
                 "marketingCost": float(profit.marketing_cost),
                 "paymentFee": float(profit.payment_fee),
                 "netProfit": float(profit.net_profit),
+                "rtoLoss": float(getattr(profit, "rto_loss", 0) or 0),
+                "lostLoss": float(getattr(profit, "lost_loss", 0) or 0),
+                "courierStatus": getattr(profit, "courier_status", None),
+                "finalStatus": getattr(profit, "final_status", None),
                 "status": profit.status,
             } if profit else None
         }
@@ -294,10 +303,12 @@ async def ship_order(
     # Create shipment
     shipment = Shipment(
         order_id=order_id,
-        courier_name=request.courier_name,
+        courier_name=request.courier_name or "delhivery",
         awb_number=request.awb_number,
         tracking_url=request.tracking_url,
         label_url=request.label_url,
+        forward_cost=Decimal(str(getattr(request, "forward_cost", 0) or 0)),
+        reverse_cost=Decimal(str(getattr(request, "reverse_cost", 0) or 0)),
         status=ShipmentStatus.SHIPPED,
         shipped_at=datetime.utcnow()
     )
@@ -329,6 +340,9 @@ async def ship_order(
         db.add(movement)
     
     db.commit()
+    
+    from app.services.profit_calculator import compute_profit_for_order
+    compute_profit_for_order(db, order_id)
     
     # Log audit events
     audit_log_order = AuditLog(

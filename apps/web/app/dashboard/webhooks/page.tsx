@@ -6,10 +6,14 @@ import { authFetch } from "@/utils/api";
 interface WebhookEvent {
   id: string;
   source: string;
-  eventType: string;
-  status: "success" | "failed";
+  shopDomain?: string;
+  topic: string;
+  eventType?: string; // legacy
+  payloadSummary?: string;
+  status: "success" | "failed" | "pending";
   payload?: any;
-  receivedAt: string;
+  receivedAt?: string;
+  createdAt?: string;
   processedAt?: string;
   error?: string;
 }
@@ -29,6 +33,7 @@ export default function WebhooksPage() {
   const [selectedEvent, setSelectedEvent] = useState<WebhookEvent | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterSource, setFilterSource] = useState<string>("all");
+  const [registering, setRegistering] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -37,13 +42,44 @@ export default function WebhooksPage() {
   const loadData = async () => {
     try {
       const [eventsData, subscriptionsData] = await Promise.all([
-        authFetch("/webhooks/events").catch(() => ({ events: [] })),
-        authFetch("/webhooks/subscriptions").catch(() => ({ subscriptions: [] })),
+        authFetch("/webhooks").catch(() => []),
+        authFetch("/webhooks/subscriptions").catch(() => []),
       ]);
-      setEvents(Array.isArray(eventsData?.events) ? eventsData.events : []);
-      setSubscriptions(Array.isArray(subscriptionsData?.subscriptions) ? subscriptionsData.subscriptions : []);
+      const rawEvents = Array.isArray(eventsData) ? eventsData : (eventsData?.events ?? []);
+      setEvents(
+        rawEvents.map((e: any) => ({
+          ...e,
+          eventType: e.topic ?? e.eventType,
+          receivedAt: e.createdAt ?? e.receivedAt,
+          status: e.error ? "failed" : e.processedAt ? "success" : "pending",
+        }))
+      );
+      setSubscriptions(Array.isArray(subscriptionsData) ? subscriptionsData : (subscriptionsData?.subscriptions ?? []));
     } catch (err) {
       console.error("Failed to load webhooks:", err);
+    }
+  };
+
+  const handleRegisterShopifyWebhooks = async () => {
+    setRegistering(true);
+    try {
+      const res = await authFetch("/integrations/shopify/register-webhooks", { method: "POST" }) as {
+        message?: string;
+        registered?: { topic: string; status: string }[];
+        errors?: { topic: string; error: string }[];
+      };
+      const msg = res?.message ?? "Webhooks registered";
+      const errs = res?.errors ?? [];
+      if (errs.length) {
+        alert(`${msg}. Errors: ${errs.map((e: any) => e.topic + ": " + e.error).join("; ")}`);
+      } else {
+        alert(msg + (res?.registered?.length ? ` (${res.registered.length} topics)` : ""));
+      }
+      await loadData();
+    } catch (err: any) {
+      alert("Register failed: " + (err?.message ?? "Unknown error"));
+    } finally {
+      setRegistering(false);
     }
   };
 
@@ -65,6 +101,7 @@ export default function WebhooksPage() {
 
   const successCount = events.filter((e) => e.status === "success").length;
   const failedCount = events.filter((e) => e.status === "failed").length;
+  const pendingCount = events.filter((e) => e.status === "pending").length;
   const activeSubscriptions = subscriptions.filter((s) => s.status === "ACTIVE").length;
 
   return (
@@ -78,7 +115,7 @@ export default function WebhooksPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <p className="text-xs text-slate-500">Total Events</p>
           <p className="mt-1 text-2xl font-bold text-slate-900">{events.length}</p>
@@ -90,6 +127,10 @@ export default function WebhooksPage() {
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <p className="text-xs text-slate-500">Failed</p>
           <p className="mt-1 text-2xl font-bold text-red-600">{failedCount}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs text-slate-500">Pending</p>
+          <p className="mt-1 text-2xl font-bold text-amber-600">{pendingCount}</p>
         </div>
       </div>
 
@@ -146,6 +187,7 @@ export default function WebhooksPage() {
               <option value="all">All Status</option>
               <option value="success">Success</option>
               <option value="failed">Failed</option>
+              <option value="pending">Pending</option>
             </select>
             <select
               value={filterSource}
@@ -176,13 +218,15 @@ export default function WebhooksPage() {
                     <span className="font-medium text-slate-900 capitalize">{event.source}</span>
                   </td>
                   <td className="py-3 px-4">
-                    <span className="text-slate-700">{event.eventType}</span>
+                    <span className="text-slate-700">{event.topic ?? event.eventType}</span>
                   </td>
                   <td className="py-3 px-4">
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-medium ${
                         event.status === "success"
                           ? "bg-green-50 text-green-700"
+                          : event.status === "pending"
+                          ? "bg-amber-50 text-amber-700"
                           : "bg-red-50 text-red-700"
                       }`}
                     >
@@ -190,7 +234,7 @@ export default function WebhooksPage() {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-slate-600">
-                    {new Date(event.receivedAt).toLocaleString()}
+                    {new Date(event.createdAt ?? event.receivedAt ?? 0).toLocaleString()}
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center justify-center gap-2">
@@ -242,8 +286,8 @@ export default function WebhooksPage() {
                   <p className="mt-1 font-medium text-slate-900 capitalize">{selectedEvent.source}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Event Type</p>
-                  <p className="mt-1 font-medium text-slate-900">{selectedEvent.eventType}</p>
+                  <p className="text-xs text-slate-500">Topic</p>
+                  <p className="mt-1 font-medium text-slate-900">{selectedEvent.topic ?? selectedEvent.eventType}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Status</p>
@@ -261,7 +305,7 @@ export default function WebhooksPage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Received At</p>
-                  <p className="mt-1 text-slate-600">{new Date(selectedEvent.receivedAt).toLocaleString()}</p>
+                  <p className="mt-1 text-slate-600">{new Date((selectedEvent.createdAt ?? selectedEvent.receivedAt) ?? "").toLocaleString()}</p>
                 </div>
               </div>
               {selectedEvent.error && (
@@ -270,12 +314,12 @@ export default function WebhooksPage() {
                   <p className="text-sm text-red-700">{selectedEvent.error}</p>
                 </div>
               )}
-              {selectedEvent.payload && (
+              {(selectedEvent.payloadSummary || selectedEvent.payload) && (
                 <div>
-                  <p className="text-sm font-medium text-slate-900 mb-2">Payload</p>
-                  <pre className="bg-slate-50 rounded-lg p-4 text-xs overflow-x-auto">
-                    {JSON.stringify(selectedEvent.payload, null, 2)}
-                  </pre>
+                  <p className="text-sm font-medium text-slate-900 mb-2">Payload summary</p>
+                  <p className="text-sm text-slate-600">
+                    {selectedEvent.payloadSummary ?? (typeof selectedEvent.payload === "string" ? selectedEvent.payload : JSON.stringify(selectedEvent.payload, null, 2))}
+                  </p>
                 </div>
               )}
               {selectedEvent.status === "failed" && (

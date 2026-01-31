@@ -79,10 +79,12 @@ class OrderResponse(BaseModel):
     items: List[OrderItemResponse]
 
 class ShipOrderRequest(BaseModel):
-    courier_name: str
+    courier_name: str = "delhivery"
     awb_number: str
     tracking_url: Optional[str] = None
     label_url: Optional[str] = None
+    forward_cost: float = 0.0
+    reverse_cost: float = 0.0
 
 # Inventory Schemas
 class InventoryAdjustRequest(BaseModel):

@@ -32,6 +32,8 @@ from app.services.shopify_service import (
 )
 from app.services.shopify_inventory_persist import persist_shopify_inventory
 from app.services.profit_calculator import compute_profit_for_order
+from app.services.shopify import ShopifyService
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,51 @@ def _normalize_scopes_for_inventory(scopes_list: list[str]) -> bool:
     required = {"read_inventory", "read_locations", "read_products"}
     normalized = {s.strip().lower() for s in scopes_list if s and s.strip()}
     return required.issubset(normalized)
+
+
+@router.post("/shopify/register-webhooks")
+async def shopify_register_webhooks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Register Shopify webhooks for the connected shop (orders/create, orders/updated,
+    orders/cancelled, refunds/create, inventory_levels/update, products/update).
+    Requires WEBHOOK_BASE_URL and SHOPIFY_API_SECRET. Call after OAuth or when webhooks show 0.
+    """
+    integration = _get_shopify_integration(db)
+    webhook_base_url = (getattr(settings, "WEBHOOK_BASE_URL", None) or "").strip().rstrip("/")
+    if not webhook_base_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="WEBHOOK_BASE_URL is not set. Set it to your API base URL (e.g. https://yourapp.onrender.com).",
+        )
+    secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
+    if not secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SHOPIFY_API_SECRET is not set.",
+        )
+    try:
+        service = ShopifyService()
+        result = await service.ensure_webhook(
+            integration.shop_domain,
+            integration.access_token,
+            secret,
+            webhook_base_url,
+        )
+        return {
+            "message": "Webhooks registered",
+            "registered": result.get("registered", []),
+            "errors": result.get("errors", []),
+            "total": result.get("total", 0),
+        }
+    except Exception as e:
+        logger.exception("Register webhooks failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to register webhooks: {str(e)}",
+        )
 
 
 @router.get("/shopify/status")
@@ -389,6 +436,7 @@ async def shopify_sync(
                 price=Decimal(str(price)),
                 fulfillment_status=FulfillmentStatus.PENDING,
             ))
+        new_order_ids.append(order.id)
         orders_inserted += 1
 
     # 2) Sync inventory into DB (cache + Inventory table); never crash

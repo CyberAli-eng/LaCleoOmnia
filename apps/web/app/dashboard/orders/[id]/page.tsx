@@ -17,9 +17,15 @@ interface OrderProfitBreakdown {
   productCost: number;
   packagingCost: number;
   shippingCost: number;
+  shippingForward?: number;
+  shippingReverse?: number;
   marketingCost: number;
   paymentFee: number;
   netProfit: number;
+  rtoLoss?: number;
+  lostLoss?: number;
+  courierStatus?: string | null;
+  finalStatus?: string | null;
   status: string;
 }
 
@@ -41,7 +47,10 @@ interface Order {
     awbNumber: string;
     trackingUrl?: string;
     status: string;
+    forwardCost?: number;
+    reverseCost?: number;
     shippedAt?: string;
+    lastSyncedAt?: string;
   };
   profit?: OrderProfitBreakdown | null;
 }
@@ -272,6 +281,12 @@ export default function OrderDetailPage() {
             <div className="rounded-lg border border-slate-200 bg-white p-6">
               <h2 className="text-lg font-semibold text-slate-900 mb-4">Profit Breakdown</h2>
               <div className="space-y-2">
+                {order.profit.finalStatus && (
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-500">Final status</span>
+                    <span className="font-medium text-slate-900">{order.profit.finalStatus}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Revenue</span>
                   <span className="font-medium text-slate-900">${order.profit.revenue.toFixed(2)}</span>
@@ -281,21 +296,42 @@ export default function OrderDetailPage() {
                   <span className="text-slate-700">-${order.profit.productCost.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Shipping</span>
-                  <span className="text-slate-700">-${order.profit.shippingCost.toFixed(2)}</span>
+                  <span className="text-slate-600">Shipping (forward)</span>
+                  <span className="text-slate-700">-${(order.profit.shippingForward ?? order.profit.shippingCost ?? 0).toFixed(2)}</span>
                 </div>
+                {(order.profit.shippingReverse ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Shipping (reverse)</span>
+                    <span className="text-slate-700">-${order.profit.shippingReverse!.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Ads / Marketing</span>
                   <span className="text-slate-700">-${order.profit.marketingCost.toFixed(2)}</span>
                 </div>
+                {(order.profit.rtoLoss ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-amber-700">
+                    <span>RTO loss</span>
+                    <span>-${order.profit.rtoLoss!.toFixed(2)}</span>
+                  </div>
+                )}
+                {(order.profit.lostLoss ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-red-700">
+                    <span>Lost loss</span>
+                    <span>-${order.profit.lostLoss!.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm border-t border-slate-200 pt-2 mt-2">
                   <span className="font-medium text-slate-900">Net profit</span>
                   <span className={`font-semibold ${order.profit.netProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
                     ${order.profit.netProfit.toFixed(2)}
                   </span>
                 </div>
+                {order.profit.courierStatus && (
+                  <p className="text-xs text-slate-500 mt-1">Courier: {order.profit.courierStatus}</p>
+                )}
                 {order.profit.status && order.profit.status !== "computed" && (
-                  <p className="text-xs text-amber-600 mt-1">Status: {order.profit.status}</p>
+                  <p className="text-xs text-amber-600 mt-1">Calc: {order.profit.status}</p>
                 )}
               </div>
             </div>

@@ -102,6 +102,10 @@ class Settings:
         "read_orders,write_orders,read_products,write_products,read_inventory,write_inventory,read_locations",
     )
     
+    # Delhivery tracking
+    DELHIVERY_API_KEY = os.getenv("DELHIVERY_API_KEY", "")
+    DELHIVERY_TRACKING_BASE_URL = os.getenv("DELHIVERY_TRACKING_BASE_URL", "https://track.delhivery.com")
+    
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO" if IS_PRODUCTION else "DEBUG")
     

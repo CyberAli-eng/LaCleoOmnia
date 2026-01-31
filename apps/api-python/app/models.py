@@ -60,6 +60,10 @@ class ShipmentStatus(str, enum.Enum):
     CREATED = "CREATED"
     SHIPPED = "SHIPPED"
     DELIVERED = "DELIVERED"
+    RTO_INITIATED = "RTO_INITIATED"
+    RTO_DONE = "RTO_DONE"
+    IN_TRANSIT = "IN_TRANSIT"
+    LOST = "LOST"
 
 class SyncJobType(str, enum.Enum):
     PULL_ORDERS = "PULL_ORDERS"
@@ -365,7 +369,7 @@ class SkuCost(Base):
 
 
 class OrderProfit(Base):
-    """Profit per order. Recomputed on order create/update/refund. Core of profit engine."""
+    """Profit per order. Recomputed on order create/update/refund. RTO/Lost rules applied when courier status is set."""
     __tablename__ = "order_profit"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -373,10 +377,16 @@ class OrderProfit(Base):
     revenue = Column("revenue", Numeric(12, 2), default=0, nullable=False)
     product_cost = Column("product_cost", Numeric(12, 2), default=0, nullable=False)
     packaging_cost = Column("packaging_cost", Numeric(12, 2), default=0, nullable=False)
-    shipping_cost = Column("shipping_cost", Numeric(12, 2), default=0, nullable=False)
+    shipping_cost = Column("shipping_cost", Numeric(12, 2), default=0, nullable=False)  # legacy; prefer shipping_forward
+    shipping_forward = Column("shipping_forward", Numeric(12, 2), default=0, nullable=False)
+    shipping_reverse = Column("shipping_reverse", Numeric(12, 2), default=0, nullable=False)
     marketing_cost = Column("marketing_cost", Numeric(12, 2), default=0, nullable=False)
     payment_fee = Column("payment_fee", Numeric(12, 2), default=0, nullable=False)
     net_profit = Column("net_profit", Numeric(12, 2), default=0, nullable=False)
+    rto_loss = Column("rto_loss", Numeric(12, 2), default=0, nullable=False)
+    lost_loss = Column("lost_loss", Numeric(12, 2), default=0, nullable=False)
+    courier_status = Column("courier_status", String, nullable=True)  # raw from courier
+    final_status = Column("final_status", String, nullable=True)  # DELIVERED | RTO_DONE | LOST | CANCELLED | PENDING
     status = Column("status", String, default="computed", nullable=False)  # computed | partial | missing_costs
     created_at = Column("created_at", DateTime, server_default=func.now())
     updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
@@ -399,3 +409,17 @@ class ShipmentTracking(Base):
     created_at = Column("created_at", DateTime, server_default=func.now())
 
     shipment = relationship("Shipment", backref=backref("tracking", uselist=False))
+
+
+class WebhookEvent(Base):
+    """Persisted Shopify (and future) webhook events. Verify HMAC before saving."""
+    __tablename__ = "webhook_events"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    source = Column("source", String, nullable=False, index=True)  # e.g. shopify
+    shop_domain = Column("shop_domain", String, nullable=True, index=True)
+    topic = Column("topic", String, nullable=False, index=True)  # e.g. orders/create
+    payload_summary = Column("payload_summary", String, nullable=True)  # id, order_id, etc.
+    processed_at = Column("processed_at", DateTime, nullable=True)
+    error = Column("error", String, nullable=True)
+    created_at = Column("created_at", DateTime, server_default=func.now())

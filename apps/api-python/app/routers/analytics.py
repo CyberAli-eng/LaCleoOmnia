@@ -87,6 +87,9 @@ async def get_profit_summary(
                 "lossAmount": 0,
                 "rtoCount": 0,
                 "rtoAmount": 0,
+                "lostCount": 0,
+                "lostAmount": 0,
+                "courierLossPercent": 0,
             }
         # Aggregate from order_profit for user's orders
         q = (
@@ -116,9 +119,33 @@ async def get_profit_summary(
         loss_row = loss_q.first()
         loss_count = int(loss_row.cnt or 0)
         loss_amount = abs(float(loss_row.amt or 0))
-        # RTO placeholder until Delhivery tracking table is populated
-        rto_count = 0
-        rto_amount = 0.0
+        # RTO / Lost from order_profit (Delhivery tracking)
+        rto_q = (
+            db.query(
+                func.coalesce(func.sum(OrderProfit.rto_loss), 0).label("amt"),
+                func.count(OrderProfit.id).label("cnt"),
+            )
+            .join(Order, Order.id == OrderProfit.order_id)
+            .filter(Order.channel_account_id.in_(channel_account_ids))
+            .filter(OrderProfit.final_status.in_(["RTO_DONE", "RTO_INITIATED"]))
+        )
+        rto_row = rto_q.first()
+        rto_amount = float(rto_row.amt or 0)
+        rto_count = int(rto_row.cnt or 0)
+        lost_q = (
+            db.query(
+                func.coalesce(func.sum(OrderProfit.lost_loss), 0).label("amt"),
+                func.count(OrderProfit.id).label("cnt"),
+            )
+            .join(Order, Order.id == OrderProfit.order_id)
+            .filter(Order.channel_account_id.in_(channel_account_ids))
+            .filter(OrderProfit.final_status == "LOST")
+        )
+        lost_row = lost_q.first()
+        lost_amount = float(lost_row.amt or 0)
+        lost_count = int(lost_row.cnt or 0)
+        courier_loss_total = rto_amount + lost_amount
+        courier_loss_percent = (courier_loss_total / revenue * 100) if revenue else 0
         return {
             "revenue": round(revenue, 2),
             "netProfit": round(net_profit, 2),
@@ -127,7 +154,10 @@ async def get_profit_summary(
             "lossCount": loss_count,
             "lossAmount": round(loss_amount, 2),
             "rtoCount": rto_count,
-            "rtoAmount": rto_amount,
+            "rtoAmount": round(rto_amount, 2),
+            "lostCount": lost_count,
+            "lostAmount": round(lost_amount, 2),
+            "courierLossPercent": round(courier_loss_percent, 2),
         }
     except Exception as e:
         logger.error("Error in profit-summary: %s", e, exc_info=True)

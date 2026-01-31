@@ -89,6 +89,22 @@ If you get 500/502 on inventory: check scopes (`read_products`, `read_inventory`
 - **Recompute**: `POST /api/profit/recompute` (all user orders) or `POST /api/profit/recompute?order_id=...` (one order). Call after updating sku_costs.
 - **Order detail**: `GET /api/orders/{id}` includes `profit` when computed (revenue, productCost, netProfit, status).
 
+## Shopify Webhooks (real-time sync)
+
+- **Receiver**: `POST /api/webhooks/shopify` — **public** (no JWT). Shopify sends `X-Shopify-Hmac-Sha256`, `X-Shopify-Topic`, `X-Shopify-Shop-Domain`. Body is verified with `SHOPIFY_API_SECRET`; events are persisted to `webhook_events`, then processed by topic.
+- **Topics**: `orders/create`, `orders/updated`, `orders/cancelled`, `refunds/create`, `inventory_levels/update`, `products/update`. Orders upsert + profit recompute; inventory sync on inventory/products.
+- **Register**: Set `WEBHOOK_BASE_URL` to your API base (e.g. `https://lacleoomnia.onrender.com`). After connecting Shopify, call `POST /api/integrations/shopify/register-webhooks` (with JWT) to register all topics with Shopify. Or webhooks are auto-registered on OAuth in channels flow.
+- **Events**: `GET /api/webhooks?source=shopify` returns persisted events (processed_at, error).
+
+## Delhivery + RTO Profit Engine
+
+- **Config**: Set `DELHIVERY_API_KEY` (and optionally `DELHIVERY_TRACKING_BASE_URL`, default `https://track.delhivery.com`).
+- **Tracking**: `GET https://track.delhivery.com/api/v1/packages/json/?waybill=XXXX` with `Authorization: Token <API_KEY>`. Status is mapped to internal: DELIVERED, RTO_DONE, RTO_INITIATED, IN_TRANSIT, LOST.
+- **Shipments**: Table has `forward_cost`, `reverse_cost`, `last_synced_at`; status enum includes RTO_INITIATED, RTO_DONE, IN_TRANSIT, LOST.
+- **Order profit**: New fields `shipping_forward`, `shipping_reverse`, `rto_loss`, `lost_loss`, `courier_status`, `final_status`. Rules: Delivered = revenue - all costs; RTO = loss (product+packaging+forward+reverse+marketing); Lost = product+packaging+forward; Cancelled (pre-ship) = marketing+payment.
+- **Sync**: `POST /api/shipments/sync` (with JWT) syncs all active Delhivery shipments, updates status, recomputes profit. Run every 15 min (cron) or on demand.
+- **APIs**: `GET /api/shipments`, `GET /api/shipments/order/{order_id}`, `POST /api/shipments` (create with order_id, awb_number, forward_cost, reverse_cost), `GET /api/shipments/{id}`.
+
 ## Database Setup
 
 After first deployment, run the seed script (if you use it):
