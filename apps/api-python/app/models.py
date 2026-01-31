@@ -382,3 +382,20 @@ class OrderProfit(Base):
     updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
 
     order = relationship("Order", backref=backref("profit", uselist=False))
+
+
+class ShipmentTracking(Base):
+    """Delhivery (and future courier) tracking: waybill status, delivery_status, rto_status. No UI yet."""
+    __tablename__ = "shipment_tracking"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    shipment_id = Column("shipment_id", String, ForeignKey("shipments.id", ondelete="CASCADE"), nullable=False, index=True)
+    waybill = Column("waybill", String, nullable=False, index=True)
+    status = Column("status", String, nullable=True)  # e.g. Dispatched, Delivered, RTO, Lost
+    delivery_status = Column("delivery_status", String, nullable=True)
+    rto_status = Column("rto_status", String, nullable=True)
+    raw_response = Column("raw_response", JSON, nullable=True)
+    last_updated_at = Column("last_updated_at", DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column("created_at", DateTime, server_default=func.now())
+
+    shipment = relationship("Shipment", backref=backref("tracking", uselist=False))

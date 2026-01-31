@@ -10,6 +10,7 @@ const navItems = [
   { href: "/dashboard", label: "Overview", icon: "📊" },
   { href: "/dashboard/orders", label: "Orders", icon: "📦" },
   { href: "/dashboard/inventory", label: "Inventory", icon: "📋" },
+  { href: "/dashboard/costs", label: "SKU Costs", icon: "💰" },
   { href: "/dashboard/integrations", label: "Integrations", icon: "🔌" },
   { href: "/dashboard/webhooks", label: "Webhooks", icon: "🔔" },
   { href: "/dashboard/analytics", label: "Analytics", icon: "📈" },

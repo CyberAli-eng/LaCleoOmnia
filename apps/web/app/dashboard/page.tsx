@@ -15,12 +15,13 @@ export default function DashboardPage() {
 
   const loadDashboardData = async () => {
     try {
-      const [ordersData, analytics, integrations, inventory, syncJobs] = await Promise.all([
+      const [ordersData, analytics, integrations, inventory, syncJobs, profitSummary] = await Promise.all([
         authFetch("/orders").catch(() => ({ orders: [] })),
         authFetch("/analytics/summary").catch(() => ({ totalOrders: 0, recentOrders: [] })),
         authFetch("/config/status").catch(() => ({ integrations: [], subscriptions: [] })),
         authFetch("/inventory").catch(() => []),
         authFetch("/sync/jobs").catch(() => ({ jobs: [] })),
+        authFetch("/analytics/profit-summary").catch(() => ({ revenue: 0, netProfit: 0, marginPercent: 0, lossCount: 0, lossAmount: 0, rtoCount: 0, rtoAmount: 0 })),
       ]);
 
       const orders = Array.isArray(ordersData?.orders) ? ordersData.orders : [];
@@ -58,6 +59,12 @@ export default function DashboardPage() {
         hasOrders: orders.length > 0,
         hasIntegrations: activeIntegrations > 0,
         hasInventory: totalProducts > 0,
+        netProfit: profitSummary?.netProfit ?? 0,
+        marginPercent: profitSummary?.marginPercent ?? 0,
+        lossCount: profitSummary?.lossCount ?? 0,
+        lossAmount: profitSummary?.lossAmount ?? 0,
+        rtoCount: profitSummary?.rtoCount ?? 0,
+        rtoAmount: profitSummary?.rtoAmount ?? 0,
       });
     } catch (err) {
       console.error("Failed to load dashboard:", err);
@@ -122,6 +129,48 @@ export default function DashboardPage() {
               <p className="mt-1 text-xs text-slate-400">All time</p>
             </div>
             <div className="text-3xl">💰</div>
+          </div>
+        </div>
+
+        {/* Net Profit */}
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-slate-500">Net Profit</p>
+              <p className={`mt-2 text-3xl font-bold ${(stats?.netProfit ?? 0) >= 0 ? "text-slate-900" : "text-red-600"}`}>
+                ${(stats?.netProfit ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">From order profit</p>
+            </div>
+            <div className="text-3xl">📈</div>
+          </div>
+        </div>
+
+        {/* Margin % */}
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-slate-500">Margin %</p>
+              <p className="mt-2 text-3xl font-bold text-slate-900">
+                {(stats?.marginPercent ?? 0).toFixed(1)}%
+              </p>
+              <p className="mt-1 text-xs text-slate-400">Net / Revenue</p>
+            </div>
+            <div className="text-3xl">%</div>
+          </div>
+        </div>
+
+        {/* RTO / Loss */}
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-slate-500">RTO / Loss</p>
+              <p className="mt-2 text-2xl font-bold text-amber-600">
+                {(stats?.lossCount ?? 0)} orders · ${(stats?.lossAmount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">Negative profit · RTO when linked</p>
+            </div>
+            <div className="text-3xl">⚠️</div>
           </div>
         </div>
 

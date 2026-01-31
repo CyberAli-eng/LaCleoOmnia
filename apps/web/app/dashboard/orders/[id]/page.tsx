@@ -12,6 +12,17 @@ interface OrderTimelineEvent {
   note?: string;
 }
 
+interface OrderProfitBreakdown {
+  revenue: number;
+  productCost: number;
+  packagingCost: number;
+  shippingCost: number;
+  marketingCost: number;
+  paymentFee: number;
+  netProfit: number;
+  status: string;
+}
+
 interface Order {
   id: string;
   channelOrderId: string;
@@ -32,6 +43,7 @@ interface Order {
     status: string;
     shippedAt?: string;
   };
+  profit?: OrderProfitBreakdown | null;
 }
 
 interface OrderItem {
@@ -62,7 +74,7 @@ export default function OrderDetailPage() {
   const loadOrder = async () => {
     setLoading(true);
     try {
-      const data = await authFetch(`/orders/${orderId}`);
+      const data = await authFetch(`/orders/${orderId}`) as { order: Order };
       setOrder(data.order);
       
       // Build timeline from order data
@@ -254,6 +266,40 @@ export default function OrderDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Profit breakdown */}
+          {order.profit && (
+            <div className="rounded-lg border border-slate-200 bg-white p-6">
+              <h2 className="text-lg font-semibold text-slate-900 mb-4">Profit Breakdown</h2>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Revenue</span>
+                  <span className="font-medium text-slate-900">${order.profit.revenue.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Product cost</span>
+                  <span className="text-slate-700">-${order.profit.productCost.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Shipping</span>
+                  <span className="text-slate-700">-${order.profit.shippingCost.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Ads / Marketing</span>
+                  <span className="text-slate-700">-${order.profit.marketingCost.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm border-t border-slate-200 pt-2 mt-2">
+                  <span className="font-medium text-slate-900">Net profit</span>
+                  <span className={`font-semibold ${order.profit.netProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    ${order.profit.netProfit.toFixed(2)}
+                  </span>
+                </div>
+                {order.profit.status && order.profit.status !== "computed" && (
+                  <p className="text-xs text-amber-600 mt-1">Status: {order.profit.status}</p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Items */}
           <div className="rounded-lg border border-slate-200 bg-white p-6">

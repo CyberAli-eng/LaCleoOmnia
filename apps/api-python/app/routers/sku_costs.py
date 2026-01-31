@@ -1,9 +1,11 @@
 """
 SKU cost engine: CRUD for product_cost, packaging, box, inbound. Required for profit calculation.
 """
+import csv
+import io
 import logging
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, File, HTTPException, status, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -69,6 +71,71 @@ async def list_sku_costs(
         query = query.filter(SkuCost.sku.ilike(f"%{q.strip()}%"))
     rows = query.order_by(SkuCost.sku).all()
     return [_to_response(r) for r in rows]
+
+
+@router.post("/bulk", response_model=dict)
+async def bulk_upload_sku_costs(
+    file: UploadFile = File(..., description="CSV with columns: sku, product_cost, packaging_cost, box_cost, inbound_cost"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk upsert SKU costs from CSV. Header: sku, product_cost, packaging_cost, box_cost, inbound_cost."""
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a CSV")
+    try:
+        body = await file.read()
+    except Exception as e:
+        logger.warning("Bulk upload read error: %s", e)
+        raise HTTPException(status_code=400, detail="Failed to read file")
+    try:
+        text = body.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+        reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames:
+            raise HTTPException(status_code=400, detail="CSV has no header row")
+        def norm(k: str) -> str:
+            return (k or "").strip().lower().replace(" ", "_")
+        field_map = {norm(f): f for f in reader.fieldnames}
+        if "sku" not in field_map:
+            raise HTTPException(status_code=400, detail="CSV must have a 'sku' column")
+        created = 0
+        updated = 0
+        errors: list[str] = []
+        for i, row in enumerate(reader):
+            try:
+                sku_key = field_map.get("sku", "sku")
+                sku = (row.get(sku_key) or "").strip()
+                if not sku:
+                    continue
+                product_cost = float(row.get(field_map.get("product_cost", "product_cost")) or 0)
+                packaging_cost = float(row.get(field_map.get("packaging_cost", "packaging_cost")) or 0)
+                box_cost = float(row.get(field_map.get("box_cost", "box_cost")) or 0)
+                inbound_cost = float(row.get(field_map.get("inbound_cost", "inbound_cost")) or 0)
+            except (ValueError, TypeError) as e:
+                errors.append(f"Row {i + 2}: invalid number - {e}")
+                continue
+            existing = db.query(SkuCost).filter(SkuCost.sku == sku).first()
+            if existing:
+                existing.product_cost = Decimal(str(product_cost))
+                existing.packaging_cost = Decimal(str(packaging_cost))
+                existing.box_cost = Decimal(str(box_cost))
+                existing.inbound_cost = Decimal(str(inbound_cost))
+                updated += 1
+            else:
+                db.add(SkuCost(
+                    sku=sku,
+                    product_cost=Decimal(str(product_cost)),
+                    packaging_cost=Decimal(str(packaging_cost)),
+                    box_cost=Decimal(str(box_cost)),
+                    inbound_cost=Decimal(str(inbound_cost)),
+                ))
+                created += 1
+        db.commit()
+        return {"created": created, "updated": updated, "errors": errors[:50]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Bulk upload failed: %s", e)
+        raise HTTPException(status_code=400, detail=f"Invalid CSV: {e}")
 
 
 @router.get("/{sku}", response_model=dict)

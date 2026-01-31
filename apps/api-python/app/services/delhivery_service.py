@@ -1,7 +1,7 @@
 """
 Delhivery integration stub. For shipment tracking, RTO, lost, reverse pickup.
-DO NOT enable in production until Shopify inventory and sync are stable.
 When ready: GET /api/v1/packages/json/?waybill=XXXX (track), then store status and map RTO/Lost.
+Persists to shipment_tracking when db is provided.
 """
 import logging
 from typing import Any, Optional
@@ -45,12 +45,48 @@ class DelhiveryClient:
         """Alias for track_shipment; fetch current status from Delhivery."""
         return await self.track_shipment(waybill)
 
-    def store_status(self, waybill: str, status: str, payload: Optional[dict] = None) -> None:
+    def store_status(
+        self,
+        waybill: str,
+        status: str,
+        payload: Optional[dict] = None,
+        db: Optional[Any] = None,
+        delivery_status: Optional[str] = None,
+        rto_status: Optional[str] = None,
+    ) -> None:
         """
-        Store shipment status (e.g. from webhook or poll). Persist to DB when models exist.
+        Store shipment status (e.g. from webhook or poll). Persist to shipment_tracking when db is provided.
         status: e.g. "Dispatched", "Delivered", "RTO", "Lost"
         """
-        logger.info("Delhivery store_status stub: waybill=%s status=%s", waybill, status)
+        logger.info("Delhivery store_status: waybill=%s status=%s", waybill, status)
+        if db is not None:
+            try:
+                from app.models import Shipment, ShipmentTracking
+                shipment = db.query(Shipment).filter(Shipment.awb_number == waybill).first()
+                if shipment:
+                    tracking = db.query(ShipmentTracking).filter(ShipmentTracking.shipment_id == shipment.id).first()
+                    if tracking:
+                        tracking.status = status
+                        tracking.delivery_status = delivery_status
+                        tracking.rto_status = rto_status
+                        tracking.raw_response = payload
+                        db.flush()
+                    else:
+                        tracking = ShipmentTracking(
+                            shipment_id=shipment.id,
+                            waybill=waybill,
+                            status=status,
+                            delivery_status=delivery_status,
+                            rto_status=rto_status,
+                            raw_response=payload,
+                        )
+                        db.add(tracking)
+                        db.flush()
+                    db.commit()
+            except Exception as e:
+                logger.warning("Failed to persist tracking: %s", e)
+                if db:
+                    db.rollback()
 
     def map_rto_or_lost(self, waybill: str, event: str) -> Optional[dict]:
         """
