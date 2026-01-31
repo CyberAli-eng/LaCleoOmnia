@@ -42,10 +42,24 @@ export default function InventoryPage() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [shopifyInventory, setShopifyInventory] = useState<{ sku: string; product_name: string; available: number; location: string }[]>([]);
   const [shopifyInventoryWarning, setShopifyInventoryWarning] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleSyncShopify = async () => {
+    setSyncing(true);
+    try {
+      const res = await authFetch("/integrations/shopify/sync", { method: "POST" }) as { orders_synced?: number; inventory_synced?: number; message?: string };
+      alert(res?.message ?? `Synced. Inventory: ${res?.inventory_synced ?? 0} records.`);
+      await loadData();
+    } catch (err: any) {
+      alert(`Sync failed: ${err?.message ?? "Unknown error"}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -96,22 +110,42 @@ export default function InventoryPage() {
     }
   };
 
-  const filteredInventory = inventory.filter((item) => {
+  // Unified display: prefer local DB; when empty, show Shopify live data in same table shape
+  const displayInventory: InventoryItem[] =
+    inventory.length > 0
+      ? inventory
+      : shopifyInventory.map((row, idx) => ({
+          id: `shopify-${row.sku}-${row.location}-${idx}`,
+          warehouseId: "shopify-live",
+          warehouse: { id: "shopify-live", name: "Shopify (live)", city: undefined, state: undefined },
+          variantId: `shopify-${row.sku}`,
+          variant: {
+            id: `shopify-${row.sku}`,
+            sku: row.sku,
+            product: { id: "", title: row.product_name || row.sku, brand: undefined },
+          },
+          totalQty: row.available,
+          reservedQty: 0,
+          availableQty: row.available,
+        }));
+
+  const filteredInventory = displayInventory.filter((item) => {
     const matchesSearch =
       !searchTerm ||
       item.variant.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.variant.product.title.toLowerCase().includes(searchTerm.toLowerCase());
+      (item.variant.product?.title || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchesWarehouse = selectedWarehouse === "all" || item.warehouseId === selectedWarehouse;
     const matchesLowStock = !lowStockOnly || item.availableQty < 10;
     return matchesSearch && matchesWarehouse && matchesLowStock;
   });
 
-  const totalItems = new Set(inventory.map((i) => i.variant.sku)).size;
-  const totalQuantity = inventory.reduce((sum, item) => sum + item.totalQty, 0);
-  const reservedQuantity = inventory.reduce((sum, item) => sum + item.reservedQty, 0);
-  const availableQuantity = inventory.reduce((sum, item) => sum + item.availableQty, 0);
-  const lowStockItems = inventory.filter((item) => item.availableQty < 10 && item.availableQty > 0).length;
-  const outOfStockItems = inventory.filter((item) => item.availableQty === 0).length;
+  const totalItems = new Set(displayInventory.map((i) => i.variant.sku)).size;
+  const totalQuantity = displayInventory.reduce((sum, item) => sum + item.totalQty, 0);
+  const reservedQuantity = displayInventory.reduce((sum, item) => sum + item.reservedQty, 0);
+  const availableQuantity = displayInventory.reduce((sum, item) => sum + item.availableQty, 0);
+  const lowStockItems = displayInventory.filter((item) => item.availableQty < 10 && item.availableQty > 0).length;
+  const outOfStockItems = displayInventory.filter((item) => item.availableQty === 0).length;
+  const isShowingShopifyOnly = inventory.length === 0 && shopifyInventory.length > 0;
 
   if (loading) {
     return (
@@ -124,18 +158,32 @@ export default function InventoryPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Inventory Management</h1>
           <p className="mt-1 text-sm text-slate-600">Track and manage stock across warehouses</p>
         </div>
-        <button
-          onClick={() => setShowAdjustModal(true)}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          + Adjust Inventory
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSyncShopify}
+            disabled={syncing}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50"
+          >
+            {syncing ? "Syncing…" : "Sync Shopify"}
+          </button>
+          <button
+            onClick={() => setShowAdjustModal(true)}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            + Adjust Inventory
+          </button>
+        </div>
       </div>
+      {isShowingShopifyOnly && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-800">
+          Showing live inventory from Shopify. Click &quot;Sync Shopify&quot; to copy into your warehouse so you can adjust and track here.
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-5">
@@ -183,6 +231,9 @@ export default function InventoryPage() {
                 {wh.name}
               </option>
             ))}
+            {shopifyInventory.length > 0 && (
+              <option value="shopify-live">Shopify (live)</option>
+            )}
           </select>
           <label className="flex items-center gap-2 text-sm text-slate-600 px-4">
             <input
@@ -259,12 +310,14 @@ export default function InventoryPage() {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-center">
-                    <button
-                      onClick={() => setSelectedItem(item)}
-                      className="text-blue-600 hover:text-blue-700 text-xs font-medium"
-                    >
-                      View History
-                    </button>
+                    {!String(item.id).startsWith("shopify-") && (
+                      <button
+                        onClick={() => setSelectedItem(item)}
+                        className="text-blue-600 hover:text-blue-700 text-xs font-medium"
+                      >
+                        View History
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -274,13 +327,13 @@ export default function InventoryPage() {
             <div className="py-12 text-center text-slate-500">
               {searchTerm || selectedWarehouse !== "all" || lowStockOnly
                 ? "No items match your filters."
-                : "No inventory records yet."}
+                : "No inventory records yet. Connect Shopify and click Sync Shopify, or add inventory manually."}
             </div>
           )}
         </div>
       </div>
 
-      {/* Shopify inventory (live from API when connected) */}
+      {/* Shopify inventory (live from API when connected) - same pattern as Orders page */}
       {shopifyInventoryWarning && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           {shopifyInventoryWarning}
@@ -298,7 +351,7 @@ export default function InventoryPage() {
                 <tr>
                   <th className="text-left py-3 px-4 font-semibold text-slate-700">SKU</th>
                   <th className="text-left py-3 px-4 font-semibold text-slate-700">Product name</th>
-                  <th className="text-right py-3 px-4 font-semibold text-slate-700">Available quantity</th>
+                  <th className="text-right py-3 px-4 font-semibold text-slate-700">Available</th>
                   <th className="text-left py-3 px-4 font-semibold text-slate-700">Location</th>
                 </tr>
               </thead>

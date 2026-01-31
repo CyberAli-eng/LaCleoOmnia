@@ -331,3 +331,20 @@ class ShopifyIntegration(Base):
     scopes = Column("scopes", String, nullable=True)
     installed_at = Column("installed_at", DateTime, server_default=func.now())
     last_synced_at = Column("last_synced_at", DateTime, nullable=True)
+
+
+class ShopifyInventory(Base):
+    """Cached inventory from Shopify. Synced by worker; GET /shopify/inventory reads from here (no live Shopify call)."""
+    __tablename__ = "shopify_inventory"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    shop_domain = Column("shop_domain", String, nullable=False, index=True)
+    sku = Column("sku", String, nullable=False, index=True)
+    product_name = Column("product_name", String, nullable=True)
+    variant_id = Column("variant_id", String, nullable=True)
+    inventory_item_id = Column("inventory_item_id", String, nullable=True)
+    location_id = Column("location_id", String, nullable=True)
+    available = Column("available", Integer, default=0)
+    synced_at = Column("synced_at", DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint("shop_domain", "sku", "location_id", name="shopify_inventory_shop_sku_loc_unique"),)

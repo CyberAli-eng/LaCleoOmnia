@@ -5,12 +5,13 @@ Never expose access_token to frontend.
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import (
     ShopifyIntegration,
+    ShopifyInventory,
     User,
     Channel,
     ChannelAccount,
@@ -21,10 +22,6 @@ from app.models import (
     OrderStatus,
     PaymentMode,
     FulfillmentStatus,
-    Product,
-    ProductVariant,
-    Warehouse,
-    Inventory,
 )
 from app.auth import get_current_user
 from app.services.shopify_service import (
@@ -33,6 +30,7 @@ from app.services.shopify_service import (
     get_orders_raw,
     get_access_scopes,
 )
+from app.services.shopify_inventory_persist import persist_shopify_inventory
 
 logger = logging.getLogger(__name__)
 
@@ -112,13 +110,14 @@ async def shopify_orders(
 
 @router.get("/shopify/inventory")
 async def shopify_inventory(
+    refresh: bool = Query(False, description="Force fetch from Shopify and update cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     GET /api/integrations/shopify/inventory
-    Fetch inventory from Shopify. Always returns 200.
-    On missing read_locations/API errors: returns empty list + warning (never 500/502).
+    Returns cached inventory from DB (no Shopify call by default). Use ?refresh=true to fetch live and update cache.
+    Always returns 200. On errors returns empty list + optional warning.
     """
     try:
         integration = _get_shopify_integration(db)
@@ -127,18 +126,75 @@ async def shopify_inventory(
     except Exception as e:
         logger.warning("Unexpected error getting Shopify integration: %s", e)
         return {"inventory": [], "warning": "Inventory could not be loaded. Check Shopify connection."}
-    try:
-        inventory = await shopify_get_inventory(
-            integration.shop_domain,
-            integration.access_token,
+    shop = integration.shop_domain
+
+    # Prefer cache (no Shopify call every time) — never 500 on empty cache
+    if not refresh:
+        cached = (
+            db.query(ShopifyInventory)
+            .filter(ShopifyInventory.shop_domain == shop)
+            .all()
         )
-        return {"inventory": inventory or []}
+        logger.info("GET /shopify/inventory: shop=%s from_cache=%s count=%s", shop, True, len(cached))
+        if cached:
+            out = [
+                {
+                    "sku": r.sku,
+                    "product_name": r.product_name or r.sku,
+                    "available": r.available or 0,
+                    "location": str(r.location_id or ""),
+                }
+                for r in cached
+            ]
+            return {"inventory": out, "source": "cache"}
+        return {"inventory": [], "source": "cache"}
+
+    # Refresh: call Shopify, persist to cache, return
+    logger.info("GET /shopify/inventory: shop=%s refresh=true calling Shopify", shop)
+    try:
+        inventory = await shopify_get_inventory(shop, integration.access_token)
     except Exception as e:
-        logger.warning("Shopify inventory fetch failed (check scopes read_inventory, read_locations): %s", e)
+        logger.warning("Shopify inventory fetch failed: %s", e)
         return {
             "inventory": [],
-            "warning": "Inventory could not be loaded from Shopify. Add read_locations scope in Shopify Partner Dashboard, then uninstall and reinstall the app.",
+            "warning": "Inventory could not be loaded from Shopify. Ensure scopes read_products, read_inventory, read_locations and reinstall the app.",
         }
+    if not inventory:
+        logger.info("GET /shopify/inventory: shop=%s refresh returned 0 items", shop)
+        return {"inventory": [], "source": "shopify"}
+
+    # Upsert cache
+    try:
+        db.query(ShopifyInventory).filter(ShopifyInventory.shop_domain == shop).delete()
+        for row in inventory:
+            if not isinstance(row, dict):
+                continue
+            r = ShopifyInventory(
+                shop_domain=shop,
+                sku=(row.get("sku") or "—")[:255],
+                product_name=(row.get("product_name") or "")[:255],
+                variant_id=str(row.get("variant_id") or "")[:64] if row.get("variant_id") else None,
+                inventory_item_id=str(row.get("inventory_item_id") or "")[:64] if row.get("inventory_item_id") else None,
+                location_id=str(row.get("location_id") or "")[:64] if row.get("location_id") else None,
+                available=int(row.get("available", 0) or 0),
+            )
+            db.add(r)
+        db.commit()
+    except Exception as e:
+        logger.warning("Failed to persist Shopify inventory cache: %s", e)
+        db.rollback()
+
+    # Return same shape as before for frontend
+    out = [
+        {
+            "sku": (row.get("sku") or "—"),
+            "product_name": (row.get("product_name") or "—"),
+            "available": int(row.get("available", 0) or 0),
+            "location": str(row.get("location_id") or row.get("location") or ""),
+        }
+        for row in inventory
+    ]
+    return {"inventory": out, "source": "shopify"}
 
 
 @router.post("/shopify/sync/orders")
@@ -333,7 +389,7 @@ async def shopify_sync(
             ))
         orders_inserted += 1
 
-    # 2) Sync inventory into DB (never crash; 0 synced if Shopify or DB fails)
+    # 2) Sync inventory into DB (cache + Inventory table); never crash
     inv_list: list = []
     try:
         inv_list = await shopify_get_inventory(
@@ -342,56 +398,7 @@ async def shopify_sync(
         )
     except Exception as e:
         logger.warning("Shopify inventory fetch in sync failed: %s", e)
-    inventory_synced = 0
-    try:
-        warehouse = db.query(Warehouse).filter(Warehouse.name == "Shopify").first()
-        if not warehouse:
-            warehouse = Warehouse(name="Shopify", city=None, state=None)
-            db.add(warehouse)
-            db.flush()
-        product = db.query(Product).filter(Product.title == "Shopify Products").first()
-        if not product:
-            product = Product(title="Shopify Products", brand=None, category=None)
-            db.add(product)
-            db.flush()
-        for row in inv_list or []:
-            if not isinstance(row, dict):
-                continue
-            sku = (row.get("sku") or "").strip() or "—"
-            if sku == "—":
-                continue
-            product_name = ((row.get("product_name") or sku) or "—")[:255]
-            available = int(row.get("available", 0) or 0)
-            variant = db.query(ProductVariant).filter(ProductVariant.sku == sku).first()
-            if not variant:
-                variant = ProductVariant(
-                    product_id=product.id,
-                    sku=sku,
-                    mrp=Decimal("0"),
-                    selling_price=Decimal("0"),
-                )
-                db.add(variant)
-                db.flush()
-            inv = db.query(Inventory).filter(
-                Inventory.warehouse_id == warehouse.id,
-                Inventory.variant_id == variant.id,
-            ).first()
-            if not inv:
-                inv = Inventory(
-                    warehouse_id=warehouse.id,
-                    variant_id=variant.id,
-                    total_qty=available,
-                    reserved_qty=0,
-                )
-                db.add(inv)
-                inventory_synced += 1
-            else:
-                if inv.total_qty != available:
-                    inv.total_qty = available
-                    inventory_synced += 1
-    except Exception as e:
-        logger.exception("Inventory DB sync failed (orders still saved): %s", e)
-        inventory_synced = 0
+    inventory_synced = persist_shopify_inventory(db, integration.shop_domain, inv_list or [])
 
     integration.last_synced_at = datetime.now(timezone.utc)
     db.commit()

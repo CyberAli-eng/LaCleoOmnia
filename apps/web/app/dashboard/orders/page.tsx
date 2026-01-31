@@ -9,6 +9,8 @@ interface Order {
   channelOrderId: string;
   customerName: string;
   customerEmail?: string;
+  shippingAddress?: string | null;
+  billingAddress?: string | null;
   paymentMode: string;
   orderTotal: number;
   status: string;
@@ -465,6 +467,22 @@ export default function OrdersPage() {
                   <p className="mt-1 font-semibold text-slate-900">${selectedOrder.orderTotal.toFixed(2)}</p>
                 </div>
               </div>
+              {(selectedOrder.shippingAddress || selectedOrder.billingAddress) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-200 pt-4">
+                  {selectedOrder.shippingAddress && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Shipping address</p>
+                      <p className="mt-1 text-sm text-slate-900 whitespace-pre-line">{selectedOrder.shippingAddress}</p>
+                    </div>
+                  )}
+                  {selectedOrder.billingAddress && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Billing address</p>
+                      <p className="mt-1 text-sm text-slate-900 whitespace-pre-line">{selectedOrder.billingAddress}</p>
+                    </div>
+                  )}
+                </div>
+              )}
               {selectedOrder.items && selectedOrder.items.length > 0 && (
                 <div>
                   <p className="text-sm font-semibold text-slate-900 mb-3">Items</p>

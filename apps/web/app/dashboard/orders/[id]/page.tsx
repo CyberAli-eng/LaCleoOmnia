@@ -17,6 +17,8 @@ interface Order {
   channelOrderId: string;
   customerName: string;
   customerEmail?: string;
+  shippingAddress?: string | null;
+  billingAddress?: string | null;
   paymentMode: string;
   orderTotal: number;
   status: string;
@@ -218,6 +220,22 @@ export default function OrderDetailPage() {
                   <p className="text-sm text-slate-600">{order.customerEmail}</p>
                 )}
               </div>
+              {(order.shippingAddress || order.billingAddress) && (
+                <>
+                  {order.shippingAddress && (
+                    <div className="col-span-2">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Shipping address</p>
+                      <p className="mt-1 text-sm text-slate-900 whitespace-pre-line">{order.shippingAddress}</p>
+                    </div>
+                  )}
+                  {order.billingAddress && (
+                    <div className="col-span-2">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Billing address</p>
+                      <p className="mt-1 text-sm text-slate-900 whitespace-pre-line">{order.billingAddress}</p>
+                    </div>
+                  )}
+                </>
+              )}
               <div>
                 <p className="text-xs text-slate-500">Payment Mode</p>
                 <p className="mt-1">{getPaymentBadge(order.paymentMode)}</p>

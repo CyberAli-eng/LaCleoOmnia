@@ -53,6 +53,34 @@ If you prefer to run migrations only once and then use the plain start command, 
 python -m uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
+## Shopify inventory (required scopes)
+
+Inventory uses the full pipeline: **products → variants (inventory_item_id) → locations → inventory_levels**.  
+Your Shopify app must have these scopes (and the store must reinstall after adding them):
+
+- `read_products`
+- `read_inventory`
+- `read_locations`
+
+Inventory is **cached in DB** (`shopify_inventory` table). GET `/api/integrations/shopify/inventory` returns from cache by default (no live Shopify call). Use **Sync Shopify** (or POST `/api/integrations/shopify/sync`) to refresh; or call GET with `?refresh=true` to fetch live and update cache.
+
+**API version:** Use **2024-01** (stable). Do not use 2026-01 or unstable versions — they can cause inventory 500/502.
+
+### Test inventory locally (after connecting Shopify)
+
+```bash
+# 1. Sync (orders + inventory) — requires auth cookie/header
+curl -X POST "http://localhost:8000/api/integrations/shopify/sync" -H "Authorization: Bearer YOUR_JWT"
+
+# 2. Get inventory from cache (no Shopify call)
+curl "http://localhost:8000/api/integrations/shopify/inventory" -H "Authorization: Bearer YOUR_JWT"
+
+# 3. Force refresh from Shopify
+curl "http://localhost:8000/api/integrations/shopify/inventory?refresh=true" -H "Authorization: Bearer YOUR_JWT"
+```
+
+If you get 500/502 on inventory: check scopes (`read_products`, `read_inventory`, `read_locations`), reinstall the app, and check server logs for the exact Shopify API URL/status/error.
+
 ## Database Setup
 
 After first deployment, run the seed script (if you use it):

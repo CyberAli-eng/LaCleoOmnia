@@ -1,13 +1,22 @@
 """
-Shopify Admin API service - authenticated requests. API version 2024-01 (stable).
-Centralizes headers and request building. Never expose access_token to frontend.
+Shopify Admin API service - authenticated requests.
+Uses API version 2024-01 (stable). Never expose access_token to frontend.
 """
 import httpx
 import logging
 from typing import Any, Optional
 
-SHOPIFY_API_VERSION = "2026-01"
+# Use 2024-01 (stable). 2026-01 can be unstable and cause inventory issues.
+SHOPIFY_API_VERSION = "2024-01"
 logger = logging.getLogger(__name__)
+
+
+def _log_shopify_response(method: str, url: str, status: int, body_preview: str = "") -> None:
+    """Log every Shopify API call for debugging. No sensitive data."""
+    if status >= 400:
+        logger.warning("Shopify API %s %s -> %s %s", method, url, status, body_preview[:200] if body_preview else "")
+    else:
+        logger.info("Shopify API %s %s -> %s", method, url, status)
 
 
 def _base_url(shop_domain: str) -> str:
@@ -54,7 +63,7 @@ async def get_access_scopes(shop_domain: str, access_token: str) -> list[str]:
 async def get_orders(shop_domain: str, access_token: str, limit: int = 250) -> list[dict]:
     """
     Fetch orders from Shopify Admin API.
-    GET /admin/api/2026-01/orders.json
+    GET /admin/api/2024-01/orders.json
     Returns normalized list of orders (id, customer, total, status, created_at).
     """
     url = f"{_base_url(shop_domain)}/orders.json"
@@ -110,7 +119,7 @@ async def get_orders_raw(shop_domain: str, access_token: str, limit: int = 250) 
 async def get_products(shop_domain: str, access_token: str, limit: int = 250) -> list[dict]:
     """
     Fetch products from Shopify Admin API.
-    GET /admin/api/2026-01/products.json
+    GET /admin/api/2024-01/products.json
     """
     url = f"{_base_url(shop_domain)}/products.json"
     async with httpx.AsyncClient() as client:
@@ -127,116 +136,163 @@ async def get_products(shop_domain: str, access_token: str, limit: int = 250) ->
 
 async def get_locations(shop_domain: str, access_token: str) -> list[dict]:
     """
-    Fetch locations from Shopify. Required for inventory_levels (API requires location_ids).
+    Step 3 of inventory pipeline. Required for inventory_levels (API needs location_ids).
     Returns list of location dicts; empty list on error.
     """
     base = _base_url(shop_domain)
+    url = f"{base}/locations.json"
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{base}/locations.json",
+                url,
                 params={"limit": 50},
                 headers=_headers(access_token),
                 timeout=15.0,
             )
+            body = response.text[:300] if response.text else ""
+            _log_shopify_response("GET", url, response.status_code, body)
             response.raise_for_status()
         data = response.json()
-        return data.get("locations") or []
+        locs = data.get("locations") or []
+        logger.info("Shopify locations: got %s location(s)", len(locs))
+        return locs
     except Exception as e:
         logger.warning("Shopify locations failed (read_locations scope): %s", e)
         return []
 
 
+def _variants_from_products(products: list[dict]) -> list[dict]:
+    """
+    Step 2: Extract variant.id, variant.sku, variant.inventory_item_id, product title.
+    Returns list of { variant_id, sku, inventory_item_id, product_title }.
+    """
+    out: list[dict] = []
+    for p in products or []:
+        if not isinstance(p, dict):
+            continue
+        title = (p.get("title") or "").strip() or "—"
+        for v in p.get("variants") or []:
+            if not isinstance(v, dict):
+                continue
+            inv_item_id = v.get("inventory_item_id")
+            if inv_item_id is None:
+                continue
+            out.append({
+                "variant_id": v.get("id"),
+                "sku": (v.get("sku") or "").strip() or "—",
+                "inventory_item_id": inv_item_id,
+                "product_title": title,
+            })
+    return out
+
+
 async def get_inventory(shop_domain: str, access_token: str) -> list[dict]:
     """
-    Fetch inventory via locations -> inventory_items and inventory_levels.
-    Shopify requires location_ids (or inventory_item_ids) for inventory_levels.json.
-    Normalizes to: SKU, product name, available quantity, location.
-    Defensive: never raises. Returns [] if Shopify returns error (e.g. missing read_locations scope).
+    Full inventory pipeline (no silent fails):
+    1) GET products.json
+    2) Extract variant.id, variant.sku, variant.inventory_item_id, product title
+    3) GET locations.json
+    4) GET inventory_levels.json?inventory_item_ids=...&location_ids=...
+    5) Merge into normalized: sku, product_name, variant_id, inventory_item_id, location_id, available
+    Defensive: never raises. Returns [] on error. Logs every step.
     """
     base = _base_url(shop_domain)
     h = _headers(access_token)
-    items: list[dict] = []
+
+    # Step 1: Get products
+    products: list[dict] = []
+    try:
+        url = f"{base}/products.json"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params={"limit": 250}, headers=h, timeout=30.0)
+            body = response.text[:300] if response.text else ""
+            _log_shopify_response("GET", url, response.status_code, body)
+            response.raise_for_status()
+        data = response.json()
+        products = data.get("products") or []
+        logger.info("Shopify products: got %s product(s)", len(products))
+    except (httpx.HTTPStatusError, Exception) as e:
+        logger.warning("Shopify products failed (read_products scope): %s", e)
+        return []
+
+    # Step 2: Extract variants with inventory_item_id
+    variants = _variants_from_products(products)
+    if not variants:
+        logger.warning("Shopify inventory: no variants with inventory_item_id found")
+        return []
+
+    inventory_item_ids = [v["inventory_item_id"] for v in variants if v.get("inventory_item_id") is not None]
+    inv_by_id = {v["inventory_item_id"]: v for v in variants}
+
+    # Step 3: Get locations
+    locs = await get_locations(shop_domain, access_token)
+    location_ids = [loc["id"] for loc in locs if isinstance(loc, dict) and loc.get("id") is not None]
+    if not location_ids:
+        logger.warning("Shopify inventory: no locations (read_locations required); levels may be empty")
+
+    # Step 4: Get inventory levels (need both params for full data)
     levels: list[dict] = []
+    try:
+        url = f"{base}/inventory_levels.json"
+        params: dict = {"limit": 250}
+        if inventory_item_ids:
+            params["inventory_item_ids"] = ",".join(str(x) for x in inventory_item_ids[:250])
+        if location_ids:
+            params["location_ids"] = ",".join(str(x) for x in location_ids[:50])
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, headers=h, timeout=30.0)
+            body = response.text[:300] if response.text else ""
+            _log_shopify_response("GET", url, response.status_code, body)
+            response.raise_for_status()
+        data = response.json()
+        levels = data.get("inventory_levels") or []
+        logger.info("Shopify inventory_levels: got %s level(s)", len(levels))
+    except (httpx.HTTPStatusError, Exception) as e:
+        logger.warning("Shopify inventory_levels failed (read_inventory, read_locations): %s", e)
+        levels = []
 
-    async with httpx.AsyncClient() as client:
-        try:
-            inv_response = await client.get(
-                f"{base}/inventory_items.json",
-                params={"limit": 250},
-                headers=h,
-                timeout=30.0,
-            )
-            inv_response.raise_for_status()
-            items_data = inv_response.json()
-            items = items_data.get("inventory_items") or []
-        except (httpx.HTTPStatusError, Exception) as e:
-            logger.warning("Shopify inventory_items failed (check read_products/read_inventory): %s", e)
-            return []
-
-        # Shopify requires location_ids or inventory_item_ids for inventory_levels
-        location_ids: list[int] = []
-        try:
-            locs = await get_locations(shop_domain, access_token)
-            location_ids = [loc["id"] for loc in locs if isinstance(loc, dict) and loc.get("id") is not None]
-        except Exception as e:
-            logger.warning("Could not fetch locations for inventory_levels: %s", e)
-        if not location_ids:
-            logger.warning("No locations returned; will try inventory_item_ids fallback.")
-
-        try:
-            params: dict = {"limit": 250}
-            if location_ids:
-                params["location_ids"] = ",".join(str(x) for x in location_ids[:50])
-            else:
-                # Fallback: use inventory_item_ids (Shopify allows either)
-                item_ids = [it.get("id") for it in items if isinstance(it, dict) and it.get("id") is not None][:250]
-                if item_ids:
-                    params["inventory_item_ids"] = ",".join(str(x) for x in item_ids)
-            levels_response = await client.get(
-                f"{base}/inventory_levels.json",
-                params=params,
-                headers=h,
-                timeout=30.0,
-            )
-            levels_response.raise_for_status()
-            levels_data = levels_response.json()
-            levels = levels_data.get("inventory_levels") or []
-        except (httpx.HTTPStatusError, Exception) as e:
-            logger.warning(
-                "Shopify inventory_levels failed (add read_locations scope and reinstall app): %s", e
-            )
-            levels = []
-
-    # Map inventory_item_id -> [levels]
-    by_item: dict[int, list] = {}
+    # Step 5: Merge
+    result: list[dict] = []
     for lev in levels or []:
-        iid = lev.get("inventory_item_id")
-        if iid is not None:
-            by_item.setdefault(iid, []).append(lev)
-
-    result = []
-    for item in items or []:
-        if not isinstance(item, dict):
+        if not isinstance(lev, dict):
             continue
-        sku = (item.get("sku") or "").strip() or "—"
-        name = (item.get("title") or sku) or "—"
-        item_id = item.get("id")
-        item_levels = by_item.get(item_id, []) if item_id is not None else []
-        for lev in item_levels:
-            result.append({
-                "sku": sku,
-                "product_name": name,
-                "available": int(lev.get("available", 0) or 0),
-                "location_id": lev.get("location_id"),
-                "location": str(lev.get("location_id") or ""),
-            })
-        if not item_levels:
-            result.append({
-                "sku": sku,
-                "product_name": name,
-                "available": 0,
-                "location_id": None,
-                "location": "",
-            })
+        iid = lev.get("inventory_item_id")
+        v = inv_by_id.get(iid) if iid is not None else None
+        sku = (v.get("sku") or "—") if v else "—"
+        product_name = (v.get("product_title") or sku) if v else "—"
+        result.append({
+            "sku": sku,
+            "product_name": product_name,
+            "variant_id": v.get("variant_id") if v else None,
+            "inventory_item_id": iid,
+            "location_id": lev.get("location_id"),
+            "location": str(lev.get("location_id") or ""),
+            "available": int(lev.get("available", 0) or 0),
+        })
+    # Include variants that have no level (0 available)
+    seen = {(r.get("inventory_item_id"), r.get("location_id")): True for r in result}
+    for v in variants:
+        if not location_ids:
+            if not any(r.get("inventory_item_id") == v.get("inventory_item_id") for r in result):
+                result.append({
+                    "sku": v.get("sku") or "—",
+                    "product_name": v.get("product_title") or "—",
+                    "variant_id": v.get("variant_id"),
+                    "inventory_item_id": v.get("inventory_item_id"),
+                    "location_id": None,
+                    "location": "",
+                    "available": 0,
+                })
+        else:
+            for loc_id in location_ids:
+                if (v.get("inventory_item_id"), loc_id) not in seen:
+                    result.append({
+                        "sku": v.get("sku") or "—",
+                        "product_name": v.get("product_title") or "—",
+                        "variant_id": v.get("variant_id"),
+                        "inventory_item_id": v.get("inventory_item_id"),
+                        "location_id": loc_id,
+                        "location": str(loc_id),
+                        "available": 0,
+                    })
     return result

@@ -1,144 +1,155 @@
 """
-Advanced sync engine for order and inventory synchronization
+Advanced sync engine for order and inventory synchronization.
+Uses shopify_service (full inventory pipeline) and shared persistence for inventory.
 """
-import asyncio
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from app.models import ChannelAccount, SyncJob, SyncJobStatus, SyncLog, LogLevel, Order, OrderStatus
+
+from app.models import (
+    ChannelAccount,
+    SyncJob,
+    SyncJobStatus,
+    SyncJobType,
+    SyncLog,
+    LogLevel,
+    ShopifyIntegration,
+)
 from app.services.shopify import ShopifyService
+from app.services.shopify_service import get_inventory as shopify_get_inventory
+from app.services.shopify_inventory_persist import persist_shopify_inventory
 from app.services.order_import import import_shopify_orders
-from app.services.credentials import decrypt_token
-import json
+
+logger = logging.getLogger(__name__)
+
 
 class SyncEngine:
     """Background sync engine for automated reconciliation"""
-    
+
     def __init__(self, db: Session):
         self.db = db
-    
+
     async def sync_orders(self, account: ChannelAccount, limit: int = 250) -> dict:
-        """Sync orders from channel"""
+        """Sync orders from channel."""
         sync_job = SyncJob(
             channel_account_id=account.id,
-            job_type="ORDER_SYNC",
+            job_type=SyncJobType.PULL_ORDERS,
             status=SyncJobStatus.RUNNING,
-            started_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc),
         )
         self.db.add(sync_job)
         self.db.commit()
         self.db.refresh(sync_job)
-        
+
         try:
             if account.channel.name.value == "SHOPIFY":
                 result = await import_shopify_orders(self.db, account)
-                
-                sync_job.status = SyncJobStatus.COMPLETED
-                sync_job.finished_at = datetime.utcnow()
+
+                sync_job.status = SyncJobStatus.SUCCESS
+                sync_job.finished_at = datetime.now(timezone.utc)
                 sync_job.records_processed = result.get("imported", 0)
                 sync_job.records_failed = result.get("failed", 0)
-                
-                # Log success
+
                 log = SyncLog(
                     sync_job_id=sync_job.id,
                     level=LogLevel.INFO,
-                    message=f"Order sync completed: {result.get('imported', 0)} imported, {result.get('failed', 0)} failed"
+                    message=f"Order sync completed: {result.get('imported', 0)} imported, {result.get('failed', 0)} failed",
                 )
                 self.db.add(log)
             else:
                 raise ValueError(f"Unsupported channel: {account.channel.name.value}")
-            
+
             self.db.commit()
             return {
                 "success": True,
                 "jobId": sync_job.id,
                 "imported": sync_job.records_processed,
-                "failed": sync_job.records_failed
+                "failed": sync_job.records_failed,
             }
-        
         except Exception as e:
             sync_job.status = SyncJobStatus.FAILED
-            sync_job.finished_at = datetime.utcnow()
+            sync_job.finished_at = datetime.now(timezone.utc)
             sync_job.error_message = str(e)
-            
-            # Log error
             log = SyncLog(
                 sync_job_id=sync_job.id,
                 level=LogLevel.ERROR,
                 message=f"Order sync failed: {str(e)}",
-                raw_payload={"error": str(e)}
+                raw_payload={"error": str(e)},
             )
             self.db.add(log)
             self.db.commit()
-            
-            return {
-                "success": False,
-                "jobId": sync_job.id,
-                "error": str(e)
-            }
-    
+            return {"success": False, "jobId": sync_job.id, "error": str(e)}
+
     async def sync_inventory(self, account: ChannelAccount) -> dict:
-        """Sync inventory levels to channel"""
-        from app.models import SyncJobType
+        """
+        Sync inventory from Shopify using full pipeline (products → variants → locations → levels)
+        and persist to ShopifyInventory cache + Inventory table. Uses ShopifyIntegration token.
+        """
         sync_job = SyncJob(
             channel_account_id=account.id,
             job_type=SyncJobType.PULL_PRODUCTS,
             status=SyncJobStatus.RUNNING,
-            started_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc),
         )
         self.db.add(sync_job)
         self.db.commit()
         self.db.refresh(sync_job)
-        
+
         try:
-            if account.channel.name.value == "SHOPIFY":
-                service = ShopifyService(account)
-                
-                # Get inventory levels from Shopify
-                inventory_levels = await service.get_inventory_levels()
-                
-                # TODO: Update local inventory based on Shopify levels
-                # This would involve mapping Shopify inventory items to local variants
-                # and updating the Inventory table
-                
-                sync_job.status = SyncJobStatus.COMPLETED
-                sync_job.finished_at = datetime.utcnow()
-                sync_job.records_processed = len(inventory_levels)
-                
-                log = SyncLog(
-                    sync_job_id=sync_job.id,
-                    level=LogLevel.INFO,
-                    message=f"Inventory sync completed: {len(inventory_levels)} items synced"
-                )
-                self.db.add(log)
-            else:
+            if account.channel.name.value != "SHOPIFY":
                 raise ValueError(f"Unsupported channel: {account.channel.name.value}")
-            
+
+            integration = (
+                self.db.query(ShopifyIntegration)
+                .filter(ShopifyIntegration.shop_domain == account.shop_domain)
+                .first()
+            )
+            if not integration or not integration.access_token:
+                raise ValueError(
+                    "Shopify not connected for this account. Connect via OAuth and ensure ShopifyIntegration exists."
+                )
+
+            inv_list = await shopify_get_inventory(
+                integration.shop_domain,
+                integration.access_token,
+            )
+            inventory_synced = persist_shopify_inventory(
+                self.db, integration.shop_domain, inv_list or []
+            )
+
+            sync_job.status = SyncJobStatus.SUCCESS
+            sync_job.finished_at = datetime.now(timezone.utc)
+            sync_job.records_processed = len(inv_list or [])
+            sync_job.records_failed = 0
+
+            log = SyncLog(
+                sync_job_id=sync_job.id,
+                level=LogLevel.INFO,
+                message=f"Inventory sync completed: {len(inv_list or [])} items from Shopify, {inventory_synced} inventory records updated",
+            )
+            self.db.add(log)
             self.db.commit()
+
             return {
                 "success": True,
                 "jobId": sync_job.id,
-                "synced": sync_job.records_processed
+                "synced": sync_job.records_processed,
+                "inventory_records_updated": inventory_synced,
             }
-        
         except Exception as e:
             sync_job.status = SyncJobStatus.FAILED
-            sync_job.finished_at = datetime.utcnow()
+            sync_job.finished_at = datetime.now(timezone.utc)
             sync_job.error_message = str(e)
-            
             log = SyncLog(
                 sync_job_id=sync_job.id,
                 level=LogLevel.ERROR,
                 message=f"Inventory sync failed: {str(e)}",
-                raw_payload={"error": str(e)}
+                raw_payload={"error": str(e)},
             )
             self.db.add(log)
             self.db.commit()
-            
-            return {
-                "success": False,
-                "jobId": sync_job.id,
-                "error": str(e)
-            }
+            logger.warning("Inventory sync failed: %s", e)
+            return {"success": False, "jobId": sync_job.id, "error": str(e)}
     
     async def daily_reconciliation(self, account: ChannelAccount) -> dict:
         """Daily full reconciliation - sync all orders and inventory"""
