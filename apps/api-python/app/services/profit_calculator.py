@@ -1,10 +1,13 @@
 """
-Profit engine: compute net_profit per order from revenue, SKU costs, shipment (forward/reverse), and courier status.
+Profit engine: compute net_profit per order from revenue, SKU costs, shipment (forward/reverse), courier status, and marketing CAC.
 Rules: Delivered = revenue - all costs; RTO = loss (product+packaging+forward+reverse+marketing); Lost = product+packaging+forward; Cancelled = marketing+payment.
+Marketing cost = blended CAC from ad_spend_daily (daily_spend / daily_orders for order date).
 """
 import logging
+from datetime import date
 from decimal import Decimal
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.models import (
     Order,
@@ -14,9 +17,24 @@ from app.models import (
     Shipment,
     ShipmentStatus,
     OrderStatus,
+    AdSpendDaily,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_daily_cac(db: Session, order_date: date) -> Decimal:
+    """Blended CAC for a calendar day: daily_spend / daily_orders. Returns 0 if no orders or no spend."""
+    daily_spend = db.query(func.coalesce(func.sum(AdSpendDaily.spend), 0)).filter(
+        AdSpendDaily.date == order_date
+    ).scalar()
+    daily_spend = Decimal(str(daily_spend or 0))
+    daily_orders = db.query(func.count(Order.id)).filter(
+        func.date(Order.created_at) == order_date
+    ).scalar() or 0
+    if daily_orders <= 0:
+        return Decimal("0")
+    return (daily_spend / daily_orders).quantize(Decimal("0.01"))
 
 
 def compute_profit_for_order(db: Session, order_id: str) -> OrderProfit | None:
@@ -68,6 +86,11 @@ def compute_profit_for_order(db: Session, order_id: str) -> OrderProfit | None:
         shipping_forward = Decimal(str(shipment.forward_cost or 0))
         shipping_reverse = Decimal(str(shipment.reverse_cost or 0))
         courier_status = shipment.status.value if hasattr(shipment.status, "value") else str(shipment.status)
+
+    # Marketing: blended CAC from ad_spend_daily for order date
+    order_date = order.created_at.date() if order.created_at else None
+    if order_date:
+        marketing_cost = _get_daily_cac(db, order_date)
 
     # Apply rules by final status
     if order.status == OrderStatus.CANCELLED and (not shipment or shipment.status == ShipmentStatus.CREATED):

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authFetch } from "@/utils/api";
+import { formatCurrency } from "@/utils/currency";
 import Link from "next/link";
 
 interface Label {
@@ -246,7 +247,7 @@ export default function LabelsPage() {
                     .filter((o) => o.status === "PACKED" || o.status === "CONFIRMED")
                     .map((order) => (
                       <option key={order.id} value={order.id}>
-                        #{order.channelOrderId} - {order.customerName} - ${order.orderTotal.toFixed(2)}
+                        #{order.channelOrderId} - {order.customerName} - {formatCurrency(order.orderTotal)}
                       </option>
                     ))}
                 </select>

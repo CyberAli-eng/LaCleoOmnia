@@ -13,12 +13,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ShopifyOAuthService:
-    """Handle Shopify OAuth flow with security best practices"""
+    """Handle Shopify OAuth flow. Uses provided api_key/api_secret or falls back to settings (env)."""
     
-    def __init__(self):
-        self.api_key = settings.SHOPIFY_API_KEY
-        self.api_secret = settings.SHOPIFY_API_SECRET
-        self.scopes = settings.SHOPIFY_SCOPES
+    def __init__(self, api_key: str | None = None, api_secret: str | None = None, scopes: str | None = None):
+        self.api_key = (api_key or "").strip() or getattr(settings, "SHOPIFY_API_KEY", "") or ""
+        self.api_secret = (api_secret or "").strip() or getattr(settings, "SHOPIFY_API_SECRET", "") or ""
+        self.scopes = (scopes or "").strip() or getattr(settings, "SHOPIFY_SCOPES", "") or ""
     
     def normalize_shop_domain(self, shop_domain: str) -> str:
         """Normalize and validate shop domain"""

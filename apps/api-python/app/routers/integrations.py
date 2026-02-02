@@ -5,7 +5,7 @@ Never expose access_token to frontend.
 """
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal
 from typing import Any
 
@@ -39,7 +39,9 @@ from app.services.shopify_service import (
 from app.services.shopify_inventory_persist import persist_shopify_inventory
 from app.services.profit_calculator import compute_profit_for_order
 from app.services.shopify import ShopifyService
+from sqlalchemy import func
 from app.services.credentials import encrypt_token, decrypt_token
+from app.services.ad_spend_sync import sync_ad_spend_for_date
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,13 @@ def _get_integration_catalog() -> dict:
                         "statusEndpoint": "/integrations/shopify/status",
                         "oauthInstallEndpoint": "/channels/shopify/oauth/install",
                         "oauthInstallQueryKey": "shop",
+                        "setupStatusEndpoint": "/integrations/providers/shopify_app/status",
+                        "setupConnectEndpoint": "/integrations/providers/shopify_app/connect",
+                        "setupFormFields": [
+                            {"key": "apiKey", "label": "API Key (Client ID)", "type": "text", "placeholder": "From Shopify Partner app"},
+                            {"key": "apiSecret", "label": "API Secret (Client secret)", "type": "password", "placeholder": "From Shopify Partner app"}
+                        ],
+                        "setupGuide": f"Create an app in Shopify Admin → Apps → Develop apps → Create an app. In Configuration set App URL and Redirect app_url is (https://lacleoomnia.onrender.com) redirect_uri is (https://lacleoomnia.onrender.com/auth/shopify/callback)  Under Client credentials copy API key and API secret. Request these scopes: read_orders, write_orders, read_products, write_products, read_inventory, write_inventory, read_locations (or match SHOPIFY_SCOPES in .env).",
                         "actions": [
                             {"id": "sync", "label": "Sync Shopify", "method": "POST", "endpoint": "/integrations/shopify/sync", "primary": True},
                             {"id": "registerWebhooks", "label": "Register webhooks", "method": "POST", "endpoint": "/integrations/shopify/register-webhooks"},
@@ -105,6 +114,48 @@ def _get_integration_catalog() -> dict:
                 ],
             },
             {
+                "id": "marketing",
+                "title": "Marketing Channels",
+                "description": "Connect ad accounts to auto-calculate CAC and marketing cost per order",
+                "providers": [
+                    {
+                        "id": "meta_ads",
+                        "name": "Meta Ads",
+                        "icon": "📱",
+                        "color": "indigo",
+                        "connectType": "api_key",
+                        "statusEndpoint": "/integrations/providers/meta_ads/status",
+                        "connectEndpoint": "/integrations/providers/meta_ads/connect",
+                        "connectBodyKey": "access_token",
+                        "connectFormFields": [
+                            {"key": "ad_account_id", "label": "Ad Account ID", "type": "text", "placeholder": "e.g. 123456789"},
+                            {"key": "access_token", "label": "Access Token", "type": "password", "placeholder": "Meta Marketing API token"}
+                        ],
+                        "actions": [],
+                        "description": "Sync daily ad spend from Meta (Facebook/Instagram). Used for blended CAC per order. Synced daily at 00:30 IST.",
+                    },
+                    {
+                        "id": "google_ads",
+                        "name": "Google Ads",
+                        "icon": "🔍",
+                        "color": "emerald",
+                        "connectType": "api_key",
+                        "statusEndpoint": "/integrations/providers/google_ads/status",
+                        "connectEndpoint": "/integrations/providers/google_ads/connect",
+                        "connectBodyKey": "refresh_token",
+                        "connectFormFields": [
+                            {"key": "developer_token", "label": "Developer Token", "type": "text", "placeholder": "From Google Ads API"},
+                            {"key": "client_id", "label": "Client ID", "type": "text", "placeholder": "OAuth2 Client ID"},
+                            {"key": "client_secret", "label": "Client Secret", "type": "password", "placeholder": "OAuth2 Client Secret"},
+                            {"key": "refresh_token", "label": "Refresh Token", "type": "password", "placeholder": "OAuth2 Refresh Token"},
+                            {"key": "customer_id", "label": "Customer ID (optional)", "type": "text", "placeholder": "Google Ads customer ID"}
+                        ],
+                        "actions": [],
+                        "description": "Sync daily ad spend from Google Ads for CAC. Converts to INR. Synced daily at 00:30 IST.",
+                    },
+                ],
+            },
+            {
                 "id": "logistics",
                 "title": "Logistics & Supply Chain",
                 "description": "Connect couriers and fulfillment for tracking and RTO",
@@ -122,7 +173,17 @@ def _get_integration_catalog() -> dict:
                         "actions": [
                             {"id": "syncShipments", "label": "Sync shipments", "method": "POST", "endpoint": "/shipments/sync", "primary": True},
                         ],
-                        "description": "Track shipments, RTO and lost status. Sync AWB status every 15 min.",
+                        "description": "Paste your API key below to connect. Track shipments, RTO and lost status every 30 minutes.",
+                    },
+                    {
+                        "id": "selloship",
+                        "name": "Selloship",
+                        "icon": "📦",
+                        "color": "orange",
+                        "connectType": "manual",
+                        "statusEndpoint": "/config/status",
+                        "actions": [],
+                        "description": "Connect couriers and fulfillment for tracking and RTO. Integration coming soon.",
                     },
                 ],
             },
@@ -140,6 +201,74 @@ async def get_integration_catalog(
 
 # Providers that use ProviderCredential + optional env fallback. Add new api_key providers here.
 CREDENTIAL_PROVIDER_ENV_KEYS: dict[str, str] = {"delhivery": "DELHIVERY_API_KEY"}
+# Providers allowed for generic /providers/{id}/status and /providers/{id}/connect (catalog-driven).
+ALLOWED_CREDENTIAL_PROVIDERS: set[str] = {"delhivery", "meta_ads", "google_ads"}
+# Providers allowed for generic /providers/{id}/status and /providers/{id}/connect (catalog-driven).
+ALLOWED_CREDENTIAL_PROVIDERS: set[str] = {"delhivery", "meta_ads", "google_ads"}
+
+
+def _get_shopify_app_credentials(db: Session, user_id: str) -> dict | None:
+    """Return { apiKey, apiSecret } for current user's Shopify app credentials, or None."""
+    cred = db.query(ProviderCredential).filter(
+        ProviderCredential.user_id == user_id,
+        ProviderCredential.provider_id == "shopify_app",
+    ).first()
+    if not cred or not cred.value_encrypted:
+        return None
+    try:
+        dec = decrypt_token(cred.value_encrypted)
+        data = json.loads(dec) if isinstance(dec, str) and dec.strip().startswith("{") else {}
+        if isinstance(data, dict) and data.get("apiKey") and data.get("apiSecret"):
+            return {"apiKey": (data["apiKey"] or "").strip(), "apiSecret": (data["apiSecret"] or "").strip()}
+    except Exception:
+        pass
+    return None
+
+
+@router.get("/providers/shopify_app/status")
+async def get_shopify_app_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return whether the user has saved Shopify App API Key and Secret (for OAuth). No .env required."""
+    creds = _get_shopify_app_credentials(db, current_user.id)
+    return {"configured": bool(creds), "connected": bool(creds)}
+
+
+@router.post("/providers/shopify_app/connect")
+async def connect_shopify_app(
+    body: dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Save Shopify App API Key and Secret (from Partner dashboard). Required before Connect via OAuth."""
+    api_key = (body.get("apiKey") or body.get("api_key") or "").strip()
+    api_secret = (body.get("apiSecret") or body.get("api_secret") or "").strip()
+    if not api_key or not api_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Both API Key and API Secret are required. Get them from your Shopify Partner app.",
+        )
+    value_json = json.dumps({"apiKey": api_key, "apiSecret": api_secret})
+    encrypted = encrypt_token(value_json)
+    cred = db.query(ProviderCredential).filter(
+        ProviderCredential.user_id == current_user.id,
+        ProviderCredential.provider_id == "shopify_app",
+    ).first()
+    if cred:
+        cred.value_encrypted = encrypted
+        db.commit()
+        db.refresh(cred)
+    else:
+        cred = ProviderCredential(
+            user_id=current_user.id,
+            provider_id="shopify_app",
+            value_encrypted=encrypted,
+        )
+        db.add(cred)
+        db.commit()
+        db.refresh(cred)
+    return {"connected": True, "message": "Shopify App credentials saved. You can now click Connect."}
 
 
 def _get_provider_credential_status(db: Session, user_id: int, provider_id: str) -> dict:
@@ -170,8 +299,8 @@ async def get_provider_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return connection status for credential-based providers (e.g. delhivery). Driven by catalog statusEndpoint."""
-    if provider_id not in CREDENTIAL_PROVIDER_ENV_KEYS:
+    """Return connection status for credential-based providers (e.g. delhivery, meta_ads, google_ads). Driven by catalog statusEndpoint."""
+    if provider_id not in ALLOWED_CREDENTIAL_PROVIDERS:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
     return _get_provider_credential_status(db, current_user.id, provider_id)
 
@@ -183,8 +312,8 @@ async def connect_provider(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Save API key/credentials for the given provider. Body keys come from catalog connectFormFields (e.g. apiKey)."""
-    if provider_id not in CREDENTIAL_PROVIDER_ENV_KEYS:
+    """Save API key/credentials for the given provider. Body keys come from catalog connectFormFields (e.g. apiKey, ad_account_id, access_token)."""
+    if provider_id not in ALLOWED_CREDENTIAL_PROVIDERS:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
     if not body or not any(str(v).strip() for v in body.values() if v is not None):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one credential value is required")
@@ -208,6 +337,36 @@ async def connect_provider(
         db.commit()
         db.refresh(cred)
     return {"connected": True, "message": "Credentials saved"}
+
+
+# IST for "yesterday" in manual sync
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+@router.post("/ad-spend/sync")
+async def trigger_ad_spend_sync(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Manually sync ad spend for yesterday (IST). Fetches Meta + Google and upserts ad_spend_daily.
+    Daily sync also runs automatically at 00:30 IST.
+    """
+    now_ist = datetime.now(_IST)
+    yesterday = (now_ist - timedelta(days=1)).date()
+    result = await sync_ad_spend_for_date(db, current_user.id, yesterday)
+    db.commit()
+    # Recompute profit for orders on that date so marketing_cost is updated
+    for (oid,) in db.query(Order.id).filter(func.date(Order.created_at) == yesterday).all():
+        compute_profit_for_order(db, str(oid))
+    db.commit()
+    return {
+        "message": "Ad spend sync completed",
+        "date": yesterday.isoformat(),
+        "meta": str(result.get("meta", 0)),
+        "google": str(result.get("google", 0)),
+        "errors": result.get("errors", []),
+    }
 
 
 def _get_shopify_integration(db: Session):
@@ -245,11 +404,19 @@ async def shopify_register_webhooks(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="WEBHOOK_BASE_URL is not set. Set it to your API base URL (e.g. https://yourapp.onrender.com).",
         )
-    secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
+    # Prefer app secret stored with integration (from user's Shopify App setup); fallback to env
+    secret = ""
+    if getattr(integration, "app_secret_encrypted", None):
+        try:
+            secret = decrypt_token(integration.app_secret_encrypted) or ""
+        except Exception:
+            pass
+    if not secret:
+        secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
     if not secret:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="SHOPIFY_API_SECRET is not set.",
+            detail="Shopify App Secret is required. Add your Shopify App credentials in Integrations (Shopify App setup), or set SHOPIFY_API_SECRET in .env.",
         )
     try:
         service = ShopifyService()

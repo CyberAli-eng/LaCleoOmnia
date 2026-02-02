@@ -1,7 +1,7 @@
 """
 SQLAlchemy models matching the Prisma schema
 """
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Numeric, Enum as SQLEnum, JSON, UniqueConstraint
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Date, ForeignKey, Numeric, Enum as SQLEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
 from app.database import Base
@@ -247,6 +247,10 @@ class Shipment(Base):
     status = Column(SQLEnum(ShipmentStatus), default=ShipmentStatus.CREATED)
     shipped_at = Column("shipped_at", DateTime, nullable=True)
     created_at = Column("created_at", DateTime, server_default=func.now())
+    # Delhivery / logistics: costs and last sync (poll GET /api/v1/packages/json/?waybill=XXXX)
+    forward_cost = Column("forward_cost", Numeric(12, 2), default=0, nullable=False)
+    reverse_cost = Column("reverse_cost", Numeric(12, 2), default=0, nullable=False)
+    last_synced_at = Column("last_synced_at", DateTime, nullable=True)
     
     order = relationship("Order", back_populates="shipment")
 
@@ -326,13 +330,14 @@ class AuditLog(Base):
 
 
 class ShopifyIntegration(Base):
-    """Shopify OAuth connection - one row per shop. Token stored here; encryption can be added later."""
+    """Shopify OAuth connection - one row per shop. Token and app secret (for webhook HMAC) stored here."""
     __tablename__ = "shopify_integrations"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     shop_domain = Column("shop_domain", String, unique=True, nullable=False, index=True)
-    access_token = Column("access_token", String, nullable=False)  # Plain for MVP; encrypt later
+    access_token = Column("access_token", String, nullable=False)
     scopes = Column("scopes", String, nullable=True)
+    app_secret_encrypted = Column("app_secret_encrypted", String, nullable=True)  # For webhook HMAC verification
     installed_at = Column("installed_at", DateTime, server_default=func.now())
     last_synced_at = Column("last_synced_at", DateTime, nullable=True)
 
@@ -417,13 +422,27 @@ class ProviderCredential(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column("user_id", String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    provider_id = Column("provider_id", String, nullable=False, index=True)  # e.g. delhivery, shiprocket
+    provider_id = Column("provider_id", String, nullable=False, index=True)  # e.g. delhivery, meta_ads, google_ads
     value_encrypted = Column("value_encrypted", String, nullable=True)  # encrypted JSON: { "apiKey": "..." }
     created_at = Column("created_at", DateTime, server_default=func.now())
     updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (UniqueConstraint("user_id", "provider_id", name="uq_provider_credentials_user_provider"),)
     user = relationship("User")
+
+
+class AdSpendDaily(Base):
+    """Daily ad spend per platform for CAC (blended cost per order). Synced from Meta/Google Ads."""
+    __tablename__ = "ad_spend_daily"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    date = Column("date", Date, nullable=False, index=True)  # calendar date (e.g. 2026-02-01)
+    platform = Column("platform", String, nullable=False, index=True)  # meta | google
+    spend = Column("spend", Numeric(12, 2), default=0, nullable=False)
+    currency = Column("currency", String(3), default="INR", nullable=False)
+    synced_at = Column("synced_at", DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint("date", "platform", name="uq_ad_spend_daily_date_platform"),)
 
 
 class WebhookEvent(Base):

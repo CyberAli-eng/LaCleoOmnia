@@ -16,16 +16,22 @@ from app.models import ShipmentStatus
 logger = logging.getLogger(__name__)
 
 # Delhivery raw status strings (normalized lower) -> internal ShipmentStatus
+# Delhivery API: Delivered, RTO, RTO-DEL, Undelivered, Lost, In Transit, etc.
 DELHIVERY_TO_INTERNAL = {
     "delivered": ShipmentStatus.DELIVERED,
     "rto delivered": ShipmentStatus.RTO_DONE,
+    "rto-del": ShipmentStatus.RTO_DONE,
+    "rto_del": ShipmentStatus.RTO_DONE,
     "rto": ShipmentStatus.RTO_DONE,
     "undelivered": ShipmentStatus.RTO_INITIATED,
+    "rto initiated": ShipmentStatus.RTO_INITIATED,
     "in transit": ShipmentStatus.IN_TRANSIT,
     "dispatched": ShipmentStatus.IN_TRANSIT,
     "pickup": ShipmentStatus.IN_TRANSIT,
+    "pickup scheduled": ShipmentStatus.IN_TRANSIT,
     "lost": ShipmentStatus.LOST,
     "cancel": ShipmentStatus.LOST,
+    "cancelled": ShipmentStatus.LOST,
 }
 
 

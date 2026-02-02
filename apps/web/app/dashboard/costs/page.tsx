@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authFetch, API_BASE_URL, getAuthHeaders } from "@/utils/api";
+import { formatCurrency } from "@/utils/currency";
 
 interface SkuCostRow {
   id: string;
@@ -318,10 +319,10 @@ export default function CostsPage() {
                 {rows.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50">
                     <td className="px-4 py-2 text-sm font-medium text-slate-900">{row.sku}</td>
-                    <td className="px-4 py-2 text-sm text-right text-slate-700">{Number(row.product_cost).toFixed(2)}</td>
-                    <td className="px-4 py-2 text-sm text-right text-slate-700">{Number(row.packaging_cost).toFixed(2)}</td>
-                    <td className="px-4 py-2 text-sm text-right text-slate-700">{Number(row.box_cost).toFixed(2)}</td>
-                    <td className="px-4 py-2 text-sm text-right text-slate-700">{Number(row.inbound_cost).toFixed(2)}</td>
+                    <td className="px-4 py-2 text-sm text-right text-slate-700">{formatCurrency(Number(row.product_cost))}</td>
+                    <td className="px-4 py-2 text-sm text-right text-slate-700">{formatCurrency(Number(row.packaging_cost))}</td>
+                    <td className="px-4 py-2 text-sm text-right text-slate-700">{formatCurrency(Number(row.box_cost))}</td>
+                    <td className="px-4 py-2 text-sm text-right text-slate-700">{formatCurrency(Number(row.inbound_cost))}</td>
                     <td className="px-4 py-2 text-right">
                       <button type="button" onClick={() => handleEdit(row)} className="text-blue-600 hover:text-blue-700 text-sm mr-2">Edit</button>
                       <button type="button" onClick={() => handleDelete(row.sku)} className="text-red-600 hover:text-red-700 text-sm">Delete</button>

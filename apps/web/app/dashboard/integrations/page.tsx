@@ -33,6 +33,10 @@ interface Provider {
   connectFormFields?: ConnectFormField[];
   oauthInstallEndpoint?: string;
   oauthInstallQueryKey?: string;
+  setupStatusEndpoint?: string;
+  setupConnectEndpoint?: string;
+  setupFormFields?: ConnectFormField[];
+  setupGuide?: string;
   actions?: ActionDef[];
   description?: string;
 }
@@ -67,6 +71,9 @@ const COLOR_CLASSES: Record<string, string> = {
   purple: "bg-purple-50 text-purple-700 border-purple-200",
   pink: "bg-pink-50 text-pink-700 border-pink-200",
   teal: "bg-teal-50 text-teal-700 border-teal-200",
+  indigo: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  orange: "bg-orange-50 text-orange-700 border-orange-200",
 };
 
 const PRIMARY_BUTTON_CLASSES: Record<string, string> = {
@@ -75,6 +82,9 @@ const PRIMARY_BUTTON_CLASSES: Record<string, string> = {
   purple: "bg-purple-600 hover:bg-purple-700 text-white",
   pink: "bg-pink-600 hover:bg-pink-700 text-white",
   teal: "bg-teal-600 hover:bg-teal-700 text-white",
+  indigo: "bg-indigo-600 hover:bg-indigo-700 text-white",
+  emerald: "bg-emerald-600 hover:bg-emerald-700 text-white",
+  orange: "bg-orange-600 hover:bg-orange-700 text-white",
 };
 
 function findProviderInCatalog(catalog: Catalog | null, providerId: string): Provider | null {
@@ -94,6 +104,7 @@ function IntegrationsPageContent() {
   const [status, setStatus] = useState<string | null>(null);
   const [statusType, setStatusType] = useState<"success" | "error">("success");
   const [showConnectForm, setShowConnectForm] = useState<string | null>(null);
+  const [showSetupForm, setShowSetupForm] = useState<string | null>(null);
   const [connectFormData, setConnectFormData] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -136,33 +147,34 @@ function IntegrationsPageContent() {
 
   const loadProviderStatus = async (provider: Provider) => {
     const endpoint = provider.statusEndpoint;
-    if (!endpoint) return;
+    let st: any = {};
     if (endpoint === "/config/status") {
       try {
         const configData = (await authFetch("/config/status")) as { integrations?: any[] };
         const integrations = configData?.integrations ?? [];
         const integration = integrations.find((i: any) => i.type === provider.id);
-        setStatusByProvider((prev) => ({
-          ...prev,
-          [provider.id]: {
-            connected: integration?.status === "CONNECTED",
-            name: integration?.name,
-          },
-        }));
+        st = { connected: integration?.status === "CONNECTED", name: integration?.name };
       } catch {
-        setStatusByProvider((prev) => ({ ...prev, [provider.id]: { connected: false } }));
+        st = { connected: false };
       }
-      return;
+    } else if (endpoint) {
+      try {
+        const res = (await authFetch(endpoint)) as any;
+        st = res?.connected !== false ? { ...res, connected: true } : { ...res, connected: false };
+      } catch {
+        st = { connected: false };
+      }
     }
-    try {
-      const res = (await authFetch(endpoint)) as any;
-      setStatusByProvider((prev) => ({
-        ...prev,
-        [provider.id]:
-          res?.connected !== false ? { ...res, connected: true } : { ...res, connected: false },
-      }));
-    } catch {
-      setStatusByProvider((prev) => ({ ...prev, [provider.id]: { connected: false } }));
+    if (provider.setupStatusEndpoint) {
+      try {
+        const setupRes = (await authFetch(provider.setupStatusEndpoint)) as { configured?: boolean };
+        st.setupConfigured = setupRes?.configured === true;
+      } catch {
+        st.setupConfigured = false;
+      }
+    }
+    if (endpoint || provider.setupStatusEndpoint) {
+      setStatusByProvider((prev) => ({ ...prev, [provider.id]: { ...prev[provider.id], ...st } }));
     }
   };
 
@@ -205,6 +217,43 @@ function IntegrationsPageContent() {
       refreshProviderStatus(provider.id);
     } catch (err: any) {
       setStatus(`Connection failed: ${err?.message ?? "Unknown error"}`);
+      setStatusType("error");
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleSetupSave = async (provider: Provider) => {
+    const fields = provider.setupFormFields ?? [];
+    const body: Record<string, string> = {};
+    for (const f of fields) {
+      const val = connectFormData[formKey(provider.id, "setup_" + f.key)]?.trim();
+      if (f.key && val) body[f.key] = val;
+    }
+    if (Object.keys(body).length === 0) {
+      setStatus("Please enter API Key and API Secret");
+      setStatusType("error");
+      return;
+    }
+    const loadId = `setup-${provider.id}`;
+    setLoading(loadId);
+    setStatus(null);
+    try {
+      await authFetch(provider.setupConnectEndpoint!, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setStatus("Shopify App credentials saved. You can now click Connect.");
+      setStatusType("success");
+      setShowSetupForm(null);
+      setConnectFormData((prev) => {
+        const next = { ...prev };
+        for (const f of fields) delete next[formKey(provider.id, "setup_" + f.key)];
+        return next;
+      });
+      refreshProviderStatus(provider.id);
+    } catch (err: any) {
+      setStatus(`Save failed: ${err?.message ?? "Unknown error"}`);
       setStatusType("error");
     } finally {
       setLoading(null);
@@ -358,15 +407,74 @@ function IntegrationsPageContent() {
                       {provider.connectType === "oauth" &&
                         provider.oauthInstallEndpoint &&
                         provider.oauthInstallQueryKey && (
-                          <button
-                            onClick={() => handleOAuthConnect(provider)}
-                            disabled={loading === `oauth-${provider.id}`}
-                            className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                          >
-                            {loading === `oauth-${provider.id}`
-                              ? "Redirecting..."
-                              : "Connect via OAuth (recommended)"}
-                          </button>
+                          <>
+                            {provider.setupStatusEndpoint && (statusByProvider[provider.id]?.setupConfigured !== true) ? (
+                              <div className="space-y-3">
+                                {provider.setupGuide && (
+                                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600">
+                                    <p className="font-medium text-slate-700 mb-1">Setup in Shopify Admin</p>
+                                    <p className="whitespace-pre-wrap">{provider.setupGuide}</p>
+                                  </div>
+                                )}
+                                {showSetupForm !== provider.id ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowSetupForm(showSetupForm === provider.id ? null : provider.id)}
+                                    className="w-full rounded-lg border border-blue-600 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                                  >
+                                    Add Shopify App API Key & Secret
+                                  </button>
+                                ) : (
+                                  <div className="space-y-3 pt-2 border-t border-slate-200">
+                                    {(provider.setupFormFields ?? []).map((field) => (
+                                      <div key={field.key}>
+                                        <label className="block text-xs font-medium text-slate-700 mb-1">{field.label}</label>
+                                        <input
+                                          type={field.type ?? "text"}
+                                          value={connectFormData[formKey(provider.id, "setup_" + field.key)] ?? ""}
+                                          onChange={(e) =>
+                                            setConnectFormData((prev) => ({
+                                              ...prev,
+                                              [formKey(provider.id, "setup_" + field.key)]: e.target.value,
+                                            }))
+                                          }
+                                          placeholder={field.placeholder}
+                                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                    ))}
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSetupSave(provider)}
+                                        disabled={loading === `setup-${provider.id}`}
+                                        className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                                      >
+                                        {loading === `setup-${provider.id}` ? "Saving..." : "Save credentials"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowSetupForm(null)}
+                                        className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleOAuthConnect(provider)}
+                                disabled={loading === `oauth-${provider.id}`}
+                                className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                              >
+                                {loading === `oauth-${provider.id}`
+                                  ? "Redirecting..."
+                                  : "Connect via OAuth (recommended)"}
+                              </button>
+                            )}
+                          </>
                         )}
                       {provider.connectType === "api_key" &&
                         provider.connectEndpoint &&

@@ -96,13 +96,19 @@ If you get 500/502 on inventory: check scopes (`read_products`, `read_inventory`
 - **Register**: Set `WEBHOOK_BASE_URL` to your API base (e.g. `https://lacleoomnia.onrender.com`). After connecting Shopify, call `POST /api/integrations/shopify/register-webhooks` (with JWT) to register all topics with Shopify. Or webhooks are auto-registered on OAuth in channels flow.
 - **Events**: `GET /api/webhooks?source=shopify` returns persisted events (processed_at, error).
 
+## User-provided credentials (Integrations UI)
+
+- **Shopify**: Users add **API Key** and **API Secret** in Integrations → Shopify App setup (no .env required). Create an app in Shopify Admin → Apps → Develop apps; set App URL and Redirect URL (e.g. `https://yourapi.com/auth/shopify/callback`); copy Client credentials. Request scopes matching `SHOPIFY_SCOPES` in .env (e.g. `read_orders`, `write_orders`, `read_products`, `write_products`, `read_inventory`, `write_inventory`, `read_locations`). Then click Connect → OAuth.
+- **Delhivery**: Users paste **API key** in Integrations → Delhivery; status shows **Connected**. No .env required. Optional: set `DELHIVERY_API_KEY` in .env for 30-min background sync.
+- **.env fallback**: `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `DELHIVERY_API_KEY` in .env are optional; if set, they are used when the user has not saved credentials in the UI.
+
 ## Delhivery + RTO Profit Engine
 
-- **Config**: Set `DELHIVERY_API_KEY` (and optionally `DELHIVERY_TRACKING_BASE_URL`, default `https://track.delhivery.com`).
+- **Config**: User pastes API key in Integrations (recommended), or set `DELHIVERY_API_KEY` in .env (and optionally `DELHIVERY_TRACKING_BASE_URL`, default `https://track.delhivery.com`).
 - **Tracking**: `GET https://track.delhivery.com/api/v1/packages/json/?waybill=XXXX` with `Authorization: Token <API_KEY>`. Status is mapped to internal: DELIVERED, RTO_DONE, RTO_INITIATED, IN_TRANSIT, LOST.
 - **Shipments**: Table has `forward_cost`, `reverse_cost`, `last_synced_at`; status enum includes RTO_INITIATED, RTO_DONE, IN_TRANSIT, LOST.
 - **Order profit**: New fields `shipping_forward`, `shipping_reverse`, `rto_loss`, `lost_loss`, `courier_status`, `final_status`. Rules: Delivered = revenue - all costs; RTO = loss (product+packaging+forward+reverse+marketing); Lost = product+packaging+forward; Cancelled (pre-ship) = marketing+payment.
-- **Sync**: `POST /api/shipments/sync` (with JWT) syncs all active Delhivery shipments, updates status, recomputes profit. Run every 15 min (cron) or on demand.
+- **Sync**: When `DELHIVERY_API_KEY` is set in .env, the app runs a **30-min background poll** (first run after 2 min). Otherwise use **Sync shipments** in Integrations. Manual: `POST /api/shipments/sync` (with JWT).
 - **APIs**: `GET /api/shipments`, `GET /api/shipments/order/{order_id}`, `POST /api/shipments` (create with order_id, awb_number, forward_cost, reverse_cost), `GET /api/shipments/{id}`.
 
 ## Database Setup

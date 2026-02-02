@@ -1,7 +1,9 @@
 """
 LaCleoOmnia OMS - FastAPI Backend
 """
+import asyncio
 import os
+from datetime import date, datetime, timedelta, timezone
 from fastapi import FastAPI, Request, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
@@ -12,10 +14,29 @@ import uvicorn
 import logging
 
 from app.routers import auth, channels, orders, inventory, products, warehouses, shipments, sync, config, webhooks, marketplaces, analytics, labels, workers, audit, users, integrations, sku_costs, profit
-from app.database import engine, Base, get_db
+from app.database import engine, Base, get_db, SessionLocal
 from app.config import settings
 from app.services.shopify_oauth import ShopifyOAuthService
-from app.models import ShopifyIntegration
+from app.services.delhivery_service import sync_delhivery_shipments
+from app.services.ad_spend_sync import sync_ad_spend_for_date, get_first_user_id_for_sync
+from app.services.credentials import encrypt_token, decrypt_token
+from app.models import (
+    User,
+    Channel,
+    ChannelAccount,
+    ChannelType,
+    ChannelAccountStatus,
+    ProviderCredential,
+    ShopifyIntegration,
+    AuditLog,
+    AuditLogAction,
+    Order,
+)
+from app.services.profit_calculator import compute_profit_for_order
+from sqlalchemy import func
+from jose import jwt, JWTError
+import json
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -164,6 +185,93 @@ async def health():
     }
 
 
+# --- Delhivery 30-min poll: real-time RTO/Lost → profit recalc ---
+DELHIVERY_POLL_INTERVAL_SEC = int(os.getenv("DELHIVERY_POLL_INTERVAL_SEC", "1800"))  # 30 min
+DELHIVERY_POLL_FIRST_DELAY_SEC = int(os.getenv("DELHIVERY_POLL_FIRST_DELAY_SEC", "120"))  # first run after 2 min
+
+
+async def _delhivery_sync_loop() -> None:
+    """Background: poll Delhivery every 30 min, update shipment status, trigger profit recalc."""
+    await asyncio.sleep(DELHIVERY_POLL_FIRST_DELAY_SEC)
+    api_key = (getattr(settings, "DELHIVERY_API_KEY", None) or "").strip()
+    if not api_key:
+        logger.info("Delhivery 30-min poll: DELHIVERY_API_KEY not set; background sync disabled")
+        return
+    logger.info("Delhivery 30-min poll started (interval=%ss)", DELHIVERY_POLL_INTERVAL_SEC)
+    while True:
+        db = None
+        try:
+            db = SessionLocal()
+            result = await sync_delhivery_shipments(db, api_key=api_key)
+            if result.get("synced", 0) > 0 or result.get("errors"):
+                logger.info("Delhivery sync: synced=%s errors=%s", result.get("synced", 0), len(result.get("errors", [])))
+        except Exception as e:
+            logger.exception("Delhivery 30-min sync failed: %s", e)
+        finally:
+            if db:
+                db.close()
+        await asyncio.sleep(DELHIVERY_POLL_INTERVAL_SEC)
+
+
+@app.on_event("startup")
+async def startup_delhivery_poll() -> None:
+    """Start background Delhivery sync loop (every 30 min)."""
+    asyncio.create_task(_delhivery_sync_loop())
+
+
+# --- Ad spend daily sync at 00:30 IST (CAC) ---
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _seconds_until_0030_ist() -> float:
+    """Seconds until next 00:30 IST (or 0 if within 60s of it)."""
+    now_ist = datetime.now(IST)
+    target = now_ist.replace(hour=0, minute=30, second=0, microsecond=0)
+    if now_ist >= target:
+        target += timedelta(days=1)
+    delta = (target - now_ist).total_seconds()
+    return max(0, delta)
+
+
+async def _ad_spend_sync_loop() -> None:
+    """Background: every day at 00:30 IST, sync yesterday's Meta + Google ad spend for CAC."""
+    logger.info("Ad spend daily sync scheduled (00:30 IST)")
+    while True:
+        secs = _seconds_until_0030_ist()
+        if secs > 60:
+            await asyncio.sleep(min(secs, 3600))  # wait until 00:30 IST, cap 1h for quick startup
+        db = None
+        try:
+            db = SessionLocal()
+            user_id = get_first_user_id_for_sync(db)
+            if not user_id:
+                logger.debug("Ad spend sync: no meta_ads/google_ads credentials; skip")
+            else:
+                now_ist = datetime.now(IST)
+                yesterday = (now_ist - timedelta(days=1)).date()
+                result = await sync_ad_spend_for_date(db, user_id, yesterday)
+                db.commit()
+                for (oid,) in db.query(Order.id).filter(func.date(Order.created_at) == yesterday).all():
+                    compute_profit_for_order(db, str(oid))
+                db.commit()
+                if result.get("meta") or result.get("google") or result.get("errors"):
+                    logger.info("Ad spend sync: date=%s meta=%s google=%s errors=%s",
+                                yesterday, result.get("meta"), result.get("google"), result.get("errors"))
+        except Exception as e:
+            logger.exception("Ad spend daily sync failed: %s", e)
+        finally:
+            if db:
+                db.close()
+        # Next run: next day 00:30 IST
+        await asyncio.sleep(_seconds_until_0030_ist() + 60)
+
+
+@app.on_event("startup")
+async def startup_ad_spend_sync() -> None:
+    """Start background ad spend sync (daily at 00:30 IST)."""
+    asyncio.create_task(_ad_spend_sync_loop())
+
+
 def _get_frontend_url() -> str:
     """Redirect URL after OAuth - no hardcoding; use env or allowed origins."""
     if settings.ALLOWED_ORIGINS:
@@ -195,15 +303,38 @@ async def auth_shopify_callback(
     redirect_fail = f"{frontend_url}/dashboard/integrations?error=oauth_failed"
     redirect_ok = f"{frontend_url}/dashboard/integrations?shopify=connected"
 
-    if not raw_query:
-        return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=missing_params")
-    if not settings.SHOPIFY_API_SECRET:
-        logger.warning("SHOPIFY_API_SECRET not set; cannot verify HMAC")
-        return RedirectResponse(url=redirect_fail)
-    if not shop or not code:
-        return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=missing_shop_or_code")
+    if not raw_query or not shop or not code:
+        return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=missing_params" if not raw_query else f"{frontend_url}/dashboard/integrations?error=missing_shop_or_code")
 
-    oauth_service = ShopifyOAuthService()
+    # Resolve OAuth credentials: from state (user's DB credentials) or from env
+    api_key = None
+    api_secret = None
+    user_id = None
+    if state:
+        try:
+            state_data = jwt.decode(state, settings.JWT_SECRET, algorithms=[settings.AUTH_ALGORITHM])
+            user_id = state_data.get("user_id")
+            if user_id:
+                cred = db.query(ProviderCredential).filter(
+                    ProviderCredential.user_id == user_id,
+                    ProviderCredential.provider_id == "shopify_app",
+                ).first()
+                if cred and cred.value_encrypted:
+                    dec = decrypt_token(cred.value_encrypted)
+                    data = json.loads(dec) if isinstance(dec, str) and dec.strip().startswith("{") else {}
+                    if isinstance(data, dict) and data.get("apiKey") and data.get("apiSecret"):
+                        api_key = (data.get("apiKey") or "").strip()
+                        api_secret = (data.get("apiSecret") or "").strip()
+        except (JWTError, Exception):
+            pass
+    if not api_key or not api_secret:
+        api_key = getattr(settings, "SHOPIFY_API_KEY", None) or ""
+        api_secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
+    if not api_key or not api_secret:
+        logger.warning("Shopify OAuth: no credentials (state or env)")
+        return RedirectResponse(url=redirect_fail)
+
+    oauth_service = ShopifyOAuthService(api_key=api_key, api_secret=api_secret)
     if not oauth_service.verify_hmac(raw_query):
         return RedirectResponse(url=redirect_fail)
 
@@ -225,23 +356,64 @@ async def auth_shopify_callback(
         logger.error("No access_token in Shopify response")
         return RedirectResponse(url=redirect_fail)
 
-    # Save or update by shop_domain (do not re-run OAuth on every request)
-    existing = db.query(ShopifyIntegration).filter(
+    # Save ShopifyIntegration (for sync + webhook HMAC)
+    existing_int = db.query(ShopifyIntegration).filter(
         ShopifyIntegration.shop_domain == normalized_shop,
     ).first()
-    if existing:
-        existing.access_token = access_token
-        existing.scopes = scopes
+    app_secret_encrypted = encrypt_token(api_secret) if api_secret else None
+    if existing_int:
+        existing_int.access_token = access_token
+        existing_int.scopes = scopes
+        existing_int.app_secret_encrypted = app_secret_encrypted
         logger.info("Updated Shopify integration for shop: %s", normalized_shop)
     else:
         db.add(ShopifyIntegration(
             shop_domain=normalized_shop,
             access_token=access_token,
             scopes=scopes,
+            app_secret_encrypted=app_secret_encrypted,
         ))
         logger.info("Created Shopify integration for shop: %s", normalized_shop)
-    db.commit()
 
+    # Save ChannelAccount if we have user_id (from state)
+    if user_id:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            channel = db.query(Channel).filter(Channel.name == ChannelType.SHOPIFY).first()
+            if not channel:
+                channel = Channel(name=ChannelType.SHOPIFY, is_active=True)
+                db.add(channel)
+                db.flush()
+            from datetime import datetime, timezone
+            acc = db.query(ChannelAccount).filter(
+                ChannelAccount.channel_id == channel.id,
+                ChannelAccount.user_id == user_id,
+                ChannelAccount.shop_domain == normalized_shop,
+            ).first()
+            shop_name = normalized_shop
+            if acc:
+                acc.access_token = encrypt_token(access_token)
+                acc.status = ChannelAccountStatus.CONNECTED
+            else:
+                acc = ChannelAccount(
+                    channel_id=channel.id,
+                    user_id=user_id,
+                    seller_name=shop_name,
+                    shop_domain=normalized_shop,
+                    access_token=encrypt_token(access_token),
+                    status=ChannelAccountStatus.CONNECTED,
+                )
+                db.add(acc)
+            audit = AuditLog(
+                user_id=user_id,
+                action=AuditLogAction.INTEGRATION_CONNECTED,
+                entity_type="Integration",
+                entity_id=acc.id,
+                details={"channel": "SHOPIFY", "shop_domain": normalized_shop},
+            )
+            db.add(audit)
+
+    db.commit()
     return RedirectResponse(url=redirect_ok)
 
 @app.get("/api")

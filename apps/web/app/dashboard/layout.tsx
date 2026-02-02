@@ -29,6 +29,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [shopifyConnected, setShopifyConnected] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showQuickActions, setShowQuickActions] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -186,50 +187,60 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 flex flex-col">
-          {/* Header */}
-          <div className="border-b border-slate-200 bg-white px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-lg font-semibold text-slate-900">
-                  {mounted && userName ? userName : "Dashboard"}
+        <main className="flex-1 flex flex-col min-w-0">
+          {/* Header: greeting + Quick Actions + Account dropdown */}
+          <div className="relative border-b border-slate-200 bg-white px-6 py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h1 className="text-lg font-semibold text-slate-900 truncate">
+                  {mounted && userName ? `Hi, ${userName}` : "Dashboard"}
                 </h1>
-                <p className="text-xs text-slate-500 mt-0.5">Seller Portal</p>
+                <p className="text-xs text-slate-500 mt-0.5">Profit & Ops Engine</p>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
+                  type="button"
                   onClick={() => setShowQuickActions(!showQuickActions)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                  className="px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   Quick Actions
                 </button>
-              <div className="flex items-center gap-4">
-                <Link href="/privacy" className="text-xs text-slate-500 hover:text-slate-700">
-                  Privacy
-                </Link>
-                <Link href="/terms" className="text-xs text-slate-500 hover:text-slate-700">
-                  Terms
-                </Link>
-              <div className="flex items-center gap-4">
-                <Link href="/privacy" className="text-xs text-slate-500 hover:text-slate-700 hidden sm:block">
-                  Privacy
-                </Link>
-                <Link href="/terms" className="text-xs text-slate-500 hover:text-slate-700 hidden sm:block">
-                  Terms
-                </Link>
-                <button
-                  className="text-sm font-semibold text-slate-600 hover:text-blue-600"
-                  onClick={() => {
-                    localStorage.removeItem("token");
-                    localStorage.removeItem("user");
-                    deleteCookie("token");
-                    router.replace("/login");
-                  }}
-                >
-                  Logout
-                </button>
-              </div>
-              </div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setAccountOpen(!accountOpen)}
+                    className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                    aria-expanded={accountOpen}
+                    aria-haspopup="true"
+                  >
+                    <span className="truncate max-w-[100px]">{userName || "Account"}</span>
+                    <svg className={`h-4 w-4 text-slate-500 transition-transform ${accountOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {accountOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" aria-hidden="true" onClick={() => setAccountOpen(false)} />
+                      <div className="absolute right-0 z-20 mt-1 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                        <Link href="/privacy" className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50" onClick={() => setAccountOpen(false)}>Privacy</Link>
+                        <Link href="/terms" className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50" onClick={() => setAccountOpen(false)}>Terms</Link>
+                        <button
+                          type="button"
+                          className="block w-full text-left px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                          onClick={() => {
+                            setAccountOpen(false);
+                            localStorage.removeItem("token");
+                            localStorage.removeItem("user");
+                            deleteCookie("token");
+                            router.replace("/login");
+                          }}
+                        >
+                          Log out
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>

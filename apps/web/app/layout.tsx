@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
+import Header from "./components/Header";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "LaCleoOmnia | Simplify E-commerce",
-  description: "A leading platform to automate order processing, warehouses, inventory, couriers, and marketing for your business.",
+  title: "LaCleoOmnia | Profit & Ops Engine",
+  description:
+    "Single source of truth for D2C net profit. Live per-order profit, RTO & lost shipment tracking, and settlement reconciliation for Indian brands.",
 };
 
 export default function RootLayout({
@@ -17,48 +19,30 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-slate-50 text-slate-900`} suppressHydrationWarning>
-        <nav className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md">
-          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-2">
-              <Link href="/" className="text-2xl font-bold tracking-tight text-blue-600">
-                LaCleo<span className="text-slate-900">Omnia</span>
+      <body className={`${inter.className} min-h-screen bg-slate-50 text-slate-900`} suppressHydrationWarning>
+        <Header />
+        <main className="flex-1">{children}</main>
+        <footer className="mt-auto border-t border-slate-200 bg-white">
+          <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+              <Link href="/" className="text-lg font-bold text-slate-900 hover:text-blue-600 transition-colors">
+                <span className="text-blue-600">LaCleo</span>Omnia
               </Link>
-            </div>
-            <div className="flex items-center gap-4">
-              <Link href="/login" className="text-sm font-semibold leading-6 text-slate-900 hover:text-blue-600 transition-colors">
-                Log in
-              </Link>
-              <Link
-                href="/register"
-                className="rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 transition-all"
-              >
-                Sign up
-              </Link>
-            </div>
-          </div>
-        </nav>
-        {children}
-        <footer className="border-t border-slate-200 bg-white pb-12 pt-16">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
-              <div className="text-xl font-bold text-blue-600">
-                LaCleo<span className="text-slate-900">Omnia</span>
-              </div>
-              <div className="flex flex-col items-center gap-4 md:flex-row">
-                <div className="flex gap-6">
-                  <Link href="/privacy" className="text-sm text-slate-500 hover:text-slate-900 transition-colors">
-                    Privacy Policy
-                  </Link>
-                  <Link href="/terms" className="text-sm text-slate-500 hover:text-slate-900 transition-colors">
-                    Terms of Service
-                  </Link>
-                </div>
-                <p className="text-sm text-slate-500">
-                  © {new Date().getFullYear()} LaCleoOmnia Inc. All rights reserved.
-                </p>
+              <div className="flex flex-wrap items-center gap-6">
+                <Link href="/privacy" className="text-sm text-slate-500 hover:text-slate-900 transition-colors">
+                  Privacy Policy
+                </Link>
+                <Link href="/terms" className="text-sm text-slate-500 hover:text-slate-900 transition-colors">
+                  Terms of Service
+                </Link>
+                <span className="text-sm text-slate-400">
+                  © {new Date().getFullYear()} LaCleoOmnia. All rights reserved.
+                </span>
               </div>
             </div>
+            <p className="mt-4 text-xs text-slate-400 max-w-xl">
+              Profit & Ops Engine — Live net profit, RTO & lost tracking, and settlement truth for D2C.
+            </p>
           </div>
         </footer>
       </body>

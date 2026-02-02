@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authFetch } from "@/utils/api";
+import { formatCurrency } from "@/utils/currency";
 
 export default function AnalyticsPage() {
   const [stats, setStats] = useState<any>(null);
@@ -70,14 +71,14 @@ export default function AnalyticsPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-6">
           <p className="text-sm text-slate-500">Total Revenue</p>
           <p className="mt-2 text-3xl font-bold text-slate-900">
-            ${(stats?.totalRevenue || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatCurrency(stats?.totalRevenue ?? 0)}
           </p>
           <p className="mt-1 text-xs text-slate-400">All time</p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-6">
           <p className="text-sm text-slate-500">Average Order Value</p>
           <p className="mt-2 text-3xl font-bold text-slate-900">
-            ${(stats?.avgOrderValue || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatCurrency(stats?.avgOrderValue ?? 0)}
           </p>
           <p className="mt-1 text-xs text-slate-400">Per order</p>
         </div>
@@ -140,7 +141,7 @@ export default function AnalyticsPage() {
                 <p className="text-xs text-slate-500">{order.source} · {order.status}</p>
               </div>
               <p className="text-sm font-semibold text-slate-900">
-                {order.currency || "$"} {order.total?.toFixed(2) || "0.00"}
+                {formatCurrency(order.total ?? 0)}
               </p>
             </div>
           ))}

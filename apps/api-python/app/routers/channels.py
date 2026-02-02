@@ -5,13 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Channel, ChannelAccount, ChannelType, ChannelAccountStatus, User, AuditLog, AuditLogAction
+from app.models import Channel, ChannelAccount, ChannelType, ChannelAccountStatus, User, AuditLog, AuditLogAction, ProviderCredential
 from app.auth import get_current_user, create_access_token
 from app.schemas import ShopifyConnectRequest, ChannelAccountResponse
 from app.services.shopify import ShopifyService
 from app.services.shopify_oauth import ShopifyOAuthService
-from app.services.credentials import encrypt_token
+from app.services.credentials import encrypt_token, decrypt_token
 from app.config import settings
+import json
 from jose import jwt, JWTError
 from datetime import timedelta, datetime, timezone
 import re
@@ -213,16 +214,35 @@ async def shopify_oauth_install(
     """
     logger.info(f"OAuth install request from user {current_user.id} for shop: {shop}")
     
-    if not settings.SHOPIFY_API_KEY or not settings.SHOPIFY_API_SECRET:
-        logger.error("Shopify OAuth not configured: missing API_KEY or API_SECRET")
+    # Prefer user's Shopify App credentials from DB (Integrations setup); fallback to env
+    api_key, api_secret = None, None
+    cred = db.query(ProviderCredential).filter(
+        ProviderCredential.user_id == current_user.id,
+        ProviderCredential.provider_id == "shopify_app",
+    ).first()
+    if cred and cred.value_encrypted:
+        try:
+            dec = decrypt_token(cred.value_encrypted)
+            data = json.loads(dec) if isinstance(dec, str) and dec.strip().startswith("{") else {}
+            if isinstance(data, dict) and data.get("apiKey") and data.get("apiSecret"):
+                api_key = (data.get("apiKey") or "").strip()
+                api_secret = (data.get("apiSecret") or "").strip()
+        except Exception:
+            pass
+    if not api_key or not api_secret:
+        api_key = getattr(settings, "SHOPIFY_API_KEY", None) or ""
+        api_secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
+    if not api_key or not api_secret:
         raise HTTPException(
-            status_code=500,
-            detail="Shopify OAuth not configured. Please set SHOPIFY_API_KEY and SHOPIFY_API_SECRET"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Add your Shopify App API Key and Secret in Integrations first (Shopify App setup), or set SHOPIFY_API_KEY and SHOPIFY_API_SECRET in .env"
         )
+    
+    scopes = getattr(settings, "SHOPIFY_SCOPES", "") or ""
+    oauth_service = ShopifyOAuthService(api_key=api_key, api_secret=api_secret, scopes=scopes)
     
     try:
         # Normalize shop domain
-        oauth_service = ShopifyOAuthService()
         normalized_shop = oauth_service.normalize_shop_domain(shop)
         
         # Generate secure state parameter with expiry, nonce, shop, and user_id

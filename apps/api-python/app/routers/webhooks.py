@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import ChannelAccount, User, WebhookEvent
+from app.models import ChannelAccount, User, WebhookEvent, ShopifyIntegration
 from app.auth import get_current_user
 from app.services.shopify import ShopifyService
 from app.services.credentials import decrypt_token
@@ -135,7 +135,16 @@ async def shopify_webhook_receive(
         logger.warning("Shopify webhook: missing X-Shopify-Shop-Domain")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing shop domain")
 
-    secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
+    # Prefer app secret stored with integration (from user's Shopify App setup); fallback to env
+    secret = ""
+    integration = db.query(ShopifyIntegration).filter(ShopifyIntegration.shop_domain == shop_domain).first()
+    if integration and getattr(integration, "app_secret_encrypted", None):
+        try:
+            secret = decrypt_token(integration.app_secret_encrypted) or ""
+        except Exception:
+            pass
+    if not secret:
+        secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
     if not verify_webhook_hmac(raw_body, hmac_header, secret):
         logger.warning("Shopify webhook: HMAC verification failed for shop=%s topic=%s", shop_domain, topic)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook signature")

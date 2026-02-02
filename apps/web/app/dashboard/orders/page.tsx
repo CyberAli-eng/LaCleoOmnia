@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authFetch } from "@/utils/api";
+import { formatCurrency } from "@/utils/currency";
 import Link from "next/link";
 
 interface Order {
@@ -411,7 +412,7 @@ export default function OrdersPage() {
                   <tr key={o.id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="py-3 px-4 font-mono text-slate-900">{o.order_id}</td>
                     <td className="py-3 px-4 text-slate-700">{o.customer_name || o.customer || "—"}</td>
-                    <td className="py-3 px-4 text-right font-medium text-slate-900">${Number(o.total).toFixed(2)}</td>
+                    <td className="py-3 px-4 text-right font-medium text-slate-900">{formatCurrency(Number(o.total))}</td>
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
                         {o.status}
@@ -464,7 +465,7 @@ export default function OrdersPage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Total</p>
-                  <p className="mt-1 font-semibold text-slate-900">${selectedOrder.orderTotal.toFixed(2)}</p>
+                  <p className="mt-1 font-semibold text-slate-900">{formatCurrency(selectedOrder.orderTotal)}</p>
                 </div>
               </div>
               {(selectedOrder.shippingAddress || selectedOrder.billingAddress) && (
@@ -495,7 +496,7 @@ export default function OrdersPage() {
                         </div>
                         <div className="text-right">
                           <p className="text-sm text-slate-900">Qty: {item.qty}</p>
-                          <p className="text-xs text-slate-500">${item.price.toFixed(2)}</p>
+                          <p className="text-xs text-slate-500">{formatCurrency(item.price)}</p>
                         </div>
                       </div>
                     ))}

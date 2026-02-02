@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authFetch } from "@/utils/api";
+import { formatCurrency } from "@/utils/currency";
 import Link from "next/link";
 
 interface OrderTimelineEvent {
@@ -271,7 +272,7 @@ export default function OrderDetailPage() {
               </div>
               <div>
                 <p className="text-xs text-slate-500">Total</p>
-                <p className="mt-1 font-semibold text-slate-900">${order.orderTotal.toFixed(2)}</p>
+                <p className="mt-1 font-semibold text-slate-900">{formatCurrency(order.orderTotal)}</p>
               </div>
             </div>
           </div>
@@ -289,42 +290,42 @@ export default function OrderDetailPage() {
                 )}
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Revenue</span>
-                  <span className="font-medium text-slate-900">${order.profit.revenue.toFixed(2)}</span>
+                  <span className="font-medium text-slate-900">{formatCurrency(order.profit.revenue)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Product cost</span>
-                  <span className="text-slate-700">-${order.profit.productCost.toFixed(2)}</span>
+                  <span className="text-slate-700">-{formatCurrency(order.profit.productCost)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Shipping (forward)</span>
-                  <span className="text-slate-700">-${(order.profit.shippingForward ?? order.profit.shippingCost ?? 0).toFixed(2)}</span>
+                  <span className="text-slate-700">-{formatCurrency(order.profit.shippingForward ?? order.profit.shippingCost ?? 0)}</span>
                 </div>
                 {(order.profit.shippingReverse ?? 0) > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-600">Shipping (reverse)</span>
-                    <span className="text-slate-700">-${order.profit.shippingReverse!.toFixed(2)}</span>
+                    <span className="text-slate-700">-{formatCurrency(order.profit.shippingReverse!)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Ads / Marketing</span>
-                  <span className="text-slate-700">-${order.profit.marketingCost.toFixed(2)}</span>
+                  <span className="text-slate-700">-{formatCurrency(order.profit.marketingCost)}</span>
                 </div>
                 {(order.profit.rtoLoss ?? 0) > 0 && (
                   <div className="flex justify-between text-sm text-amber-700">
                     <span>RTO loss</span>
-                    <span>-${order.profit.rtoLoss!.toFixed(2)}</span>
+                    <span>-{formatCurrency(order.profit.rtoLoss!)}</span>
                   </div>
                 )}
                 {(order.profit.lostLoss ?? 0) > 0 && (
                   <div className="flex justify-between text-sm text-red-700">
                     <span>Lost loss</span>
-                    <span>-${order.profit.lostLoss!.toFixed(2)}</span>
+                    <span>-{formatCurrency(order.profit.lostLoss!)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm border-t border-slate-200 pt-2 mt-2">
                   <span className="font-medium text-slate-900">Net profit</span>
                   <span className={`font-semibold ${order.profit.netProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    ${order.profit.netProfit.toFixed(2)}
+                    {formatCurrency(order.profit.netProfit)}
                   </span>
                 </div>
                 {order.profit.courierStatus && (
@@ -363,9 +364,9 @@ export default function OrderDetailPage() {
                   </div>
                   <div className="text-right">
                     <p className="font-medium text-slate-900">Qty: {item.qty}</p>
-                    <p className="text-sm text-slate-600">${item.price.toFixed(2)}</p>
+                    <p className="text-sm text-slate-600">{formatCurrency(item.price)}</p>
                     <p className="text-sm font-semibold text-slate-900 mt-1">
-                      ${(item.qty * item.price).toFixed(2)}
+                      {formatCurrency(item.qty * item.price)}
                     </p>
                   </div>
                 </div>

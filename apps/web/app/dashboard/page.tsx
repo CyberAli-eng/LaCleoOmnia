@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authFetch } from "@/utils/api";
+import { formatCurrency } from "@/utils/currency";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -127,7 +128,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm text-slate-500">Total Revenue</p>
               <p className="mt-2 text-3xl font-bold text-slate-900">
-                ${(stats?.totalRevenue || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatCurrency(stats?.totalRevenue ?? 0)}
               </p>
               <p className="mt-1 text-xs text-slate-400">All time</p>
             </div>
@@ -141,7 +142,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm text-slate-500">Net Profit</p>
               <p className={`mt-2 text-3xl font-bold ${(stats?.netProfit ?? 0) >= 0 ? "text-slate-900" : "text-red-600"}`}>
-                ${(stats?.netProfit ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatCurrency(stats?.netProfit ?? 0)}
               </p>
               <p className="mt-1 text-xs text-slate-400">From order profit</p>
             </div>
@@ -169,7 +170,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm text-slate-500">RTO Loss</p>
               <p className="mt-2 text-2xl font-bold text-amber-600">
-                ${(stats?.rtoAmount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                {formatCurrency(stats?.rtoAmount ?? 0)}
               </p>
               <p className="mt-1 text-xs text-slate-400">{(stats?.rtoCount ?? 0)} orders</p>
             </div>
@@ -181,7 +182,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm text-slate-500">Lost Loss</p>
               <p className="mt-2 text-2xl font-bold text-red-600">
-                ${(stats?.lostAmount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                {formatCurrency(stats?.lostAmount ?? 0)}
               </p>
               <p className="mt-1 text-xs text-slate-400">{(stats?.lostCount ?? 0)} orders</p>
             </div>
@@ -281,7 +282,7 @@ export default function DashboardPage() {
                     <p className="text-xs text-slate-500">{order.source} · {order.status}</p>
                   </div>
                   <p className="text-sm font-semibold text-slate-900">
-                    ${order.total?.toFixed(2) || "0.00"}
+                    {formatCurrency(order.total ?? 0)}
                   </p>
                 </div>
               ))}
