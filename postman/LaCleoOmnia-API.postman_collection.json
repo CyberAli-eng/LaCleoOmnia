@@ -19,7 +19,7 @@
       "name": "Health",
       "item": [
         {
-          "name": "Health check",
+          "name": "GET Health check",
           "request": {
             "auth": { "type": "noauth" },
             "method": "GET",
@@ -34,7 +34,7 @@
       "name": "Auth",
       "item": [
         {
-          "name": "Login",
+          "name": "POST Login",
           "event": [
             {
               "listen": "test",
@@ -57,10 +57,20 @@
             },
             "url": "{{base_url}}/api/auth/login",
             "description": "Returns token and user. Token is auto-saved to collection variable for other requests."
-          }
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{base_url}}/api/auth/login" }, "body": { "mode": "raw", "raw": "{\"email\":\"admin@local\",\"password\":\"Admin@123\"}" } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"user\": {\n    \"id\": \"user-001\",\n    \"name\": \"Admin\",\n    \"email\": \"admin@local\",\n    \"role\": \"ADMIN\"\n  }\n}"
+            }
+          ]
         },
         {
-          "name": "Register",
+          "name": "POST Register",
           "request": {
             "auth": { "type": "noauth" },
             "method": "POST",
@@ -74,7 +84,7 @@
           }
         },
         {
-          "name": "Get current user (me)",
+          "name": "GET Get current user (me)",
           "request": {
             "method": "GET",
             "header": [],
@@ -83,7 +93,7 @@
           }
         },
         {
-          "name": "Logout",
+          "name": "POST Logout",
           "request": {
             "method": "POST",
             "header": [],
@@ -96,7 +106,7 @@
       "name": "Orders",
       "item": [
         {
-          "name": "List orders",
+          "name": "GET List orders",
           "request": {
             "method": "GET",
             "header": [],
@@ -109,11 +119,20 @@
                 { "key": "channel", "value": "", "disabled": true },
                 { "key": "q", "value": "", "description": "Search order id, customer, email", "disabled": true }
               ]
-            }
+            },
+            "response": [
+              {
+                "name": "Success Response",
+                "status": "OK",
+                "code": 200,
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": "{\n  \"orders\": [\n    {\n      \"id\": \"order-001\",\n      \"channelOrderId\": \"SHOP-1001\",\n      \"customerName\": \"Rahul Sharma\",\n      \"orderTotal\": 2499.00,\n      \"status\": \"CONFIRMED\",\n      \"createdAt\": \"2026-01-22T10:00:00Z\",\n      \"items\": []\n    }\n  ]\n}"
+              }
+            ]
           }
         },
         {
-          "name": "Get order by ID",
+          "name": "GET Get order by ID",
           "request": {
             "method": "GET",
             "header": [],
@@ -122,7 +141,7 @@
           }
         },
         {
-          "name": "Confirm order",
+          "name": "POST Confirm order",
           "request": {
             "method": "POST",
             "header": [],
@@ -130,7 +149,7 @@
           }
         },
         {
-          "name": "Pack order",
+          "name": "POST Pack order",
           "request": {
             "method": "POST",
             "header": [],
@@ -138,7 +157,7 @@
           }
         },
         {
-          "name": "Ship order",
+          "name": "POST Ship order",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -150,7 +169,7 @@
           }
         },
         {
-          "name": "Cancel order",
+          "name": "POST Cancel order",
           "request": {
             "method": "POST",
             "header": [],
@@ -163,7 +182,7 @@
       "name": "Inventory",
       "item": [
         {
-          "name": "List inventory",
+          "name": "GET List inventory",
           "request": {
             "method": "GET",
             "header": [],
@@ -179,7 +198,7 @@
           }
         },
         {
-          "name": "Adjust inventory",
+          "name": "POST Adjust inventory",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -196,7 +215,7 @@
       "name": "Integrations",
       "item": [
         {
-          "name": "Get catalog",
+          "name": "GET Get catalog",
           "request": {
             "method": "GET",
             "header": [],
@@ -204,7 +223,7 @@
           }
         },
         {
-          "name": "Provider status (e.g. delhivery)",
+          "name": "GET Get provider status",
           "request": {
             "method": "GET",
             "header": [],
@@ -212,7 +231,7 @@
           }
         },
         {
-          "name": "Connect provider (e.g. delhivery)",
+          "name": "POST Connect provider",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -224,7 +243,7 @@
           }
         },
         {
-          "name": "Shopify app status",
+          "name": "GET Get Shopify app status",
           "request": {
             "method": "GET",
             "header": [],
@@ -232,7 +251,7 @@
           }
         },
         {
-          "name": "Shopify app connect (save API key/secret)",
+          "name": "POST Connect Shopify app",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -244,7 +263,7 @@
           }
         },
         {
-          "name": "Shopify status (OAuth connected)",
+          "name": "GET Get Shopify status",
           "request": {
             "method": "GET",
             "header": [],
@@ -252,7 +271,7 @@
           }
         },
         {
-          "name": "Shopify orders",
+          "name": "GET Get Shopify orders",
           "request": {
             "method": "GET",
             "header": [],
@@ -260,7 +279,7 @@
           }
         },
         {
-          "name": "Shopify inventory",
+          "name": "GET Get Shopify inventory",
           "request": {
             "method": "GET",
             "header": [],
@@ -273,7 +292,7 @@
           }
         },
         {
-          "name": "Shopify sync (orders + inventory)",
+          "name": "POST Sync Shopify",
           "request": {
             "method": "POST",
             "header": [],
@@ -281,7 +300,7 @@
           }
         },
         {
-          "name": "Register Shopify webhooks",
+          "name": "POST Register Shopify webhooks",
           "request": {
             "method": "POST",
             "header": [],
@@ -289,7 +308,7 @@
           }
         },
         {
-          "name": "Ad spend sync",
+          "name": "POST Sync ad spend",
           "request": {
             "method": "POST",
             "header": [],
@@ -302,7 +321,7 @@
       "name": "Shipments",
       "item": [
         {
-          "name": "List shipments",
+          "name": "GET List shipments",
           "request": {
             "method": "GET",
             "header": [],
@@ -310,7 +329,7 @@
           }
         },
         {
-          "name": "Get shipment by order ID",
+          "name": "GET Get shipment by order ID",
           "request": {
             "method": "GET",
             "header": [],
@@ -318,7 +337,7 @@
           }
         },
         {
-          "name": "Create shipment",
+          "name": "POST Create shipment",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -330,7 +349,7 @@
           }
         },
         {
-          "name": "Sync shipments",
+          "name": "POST Sync shipments",
           "request": {
             "method": "POST",
             "header": [],
@@ -344,7 +363,7 @@
       "name": "Analytics",
       "item": [
         {
-          "name": "Summary",
+          "name": "GET Get summary",
           "request": {
             "method": "GET",
             "header": [],
@@ -352,7 +371,7 @@
           }
         },
         {
-          "name": "Profit summary",
+          "name": "GET Get profit summary",
           "request": {
             "method": "GET",
             "header": [],
@@ -365,7 +384,7 @@
       "name": "SKU Costs",
       "item": [
         {
-          "name": "List SKU costs",
+          "name": "GET List SKU costs",
           "request": {
             "method": "GET",
             "header": [],
@@ -373,7 +392,7 @@
           }
         },
         {
-          "name": "Get SKU cost",
+          "name": "GET Get SKU cost by SKU",
           "request": {
             "method": "GET",
             "header": [],
@@ -381,7 +400,7 @@
           }
         },
         {
-          "name": "Create SKU cost",
+          "name": "POST Create SKU cost",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -393,7 +412,7 @@
           }
         },
         {
-          "name": "Update SKU cost",
+          "name": "PATCH Update SKU cost",
           "request": {
             "method": "PATCH",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -405,7 +424,7 @@
           }
         },
         {
-          "name": "Delete SKU cost",
+          "name": "DELETE Delete SKU cost",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -418,7 +437,7 @@
       "name": "Profit",
       "item": [
         {
-          "name": "Recompute profit",
+          "name": "POST Recompute profit",
           "request": {
             "method": "POST",
             "header": [],
@@ -436,7 +455,7 @@
       "name": "Config",
       "item": [
         {
-          "name": "Get config status",
+          "name": "GET Get config status",
           "request": {
             "method": "GET",
             "header": [],
@@ -449,7 +468,7 @@
       "name": "Webhooks",
       "item": [
         {
-          "name": "List webhooks",
+          "name": "GET List webhooks",
           "request": {
             "method": "GET",
             "header": [],
@@ -457,7 +476,7 @@
           }
         },
         {
-          "name": "List subscriptions",
+          "name": "GET List subscriptions",
           "request": {
             "method": "GET",
             "header": [],
@@ -465,7 +484,7 @@
           }
         },
         {
-          "name": "List events",
+          "name": "GET List events",
           "request": {
             "method": "GET",
             "header": [],
@@ -478,7 +497,7 @@
           }
         },
         {
-          "name": "Retry webhook event",
+          "name": "POST Retry webhook event",
           "request": {
             "method": "POST",
             "header": [],
@@ -491,7 +510,7 @@
       "name": "Workers",
       "item": [
         {
-          "name": "List workers",
+          "name": "GET List workers",
           "request": {
             "method": "GET",
             "header": [],
@@ -504,7 +523,7 @@
       "name": "Sync",
       "item": [
         {
-          "name": "List sync jobs",
+          "name": "GET List sync jobs",
           "request": {
             "method": "GET",
             "header": [],
@@ -517,7 +536,7 @@
       "name": "Users",
       "item": [
         {
-          "name": "List users",
+          "name": "GET List users",
           "request": {
             "method": "GET",
             "header": [],
@@ -525,7 +544,7 @@
           }
         },
         {
-          "name": "Create user",
+          "name": "POST Create user",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -537,7 +556,7 @@
           }
         },
         {
-          "name": "Update user",
+          "name": "PATCH Update user",
           "request": {
             "method": "PATCH",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -549,7 +568,7 @@
           }
         },
         {
-          "name": "Delete user",
+          "name": "DELETE Delete user",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -562,7 +581,7 @@
       "name": "Audit",
       "item": [
         {
-          "name": "List audit log",
+          "name": "GET List audit log",
           "request": {
             "method": "GET",
             "header": [],
@@ -584,7 +603,7 @@
       "name": "Labels",
       "item": [
         {
-          "name": "List labels",
+          "name": "GET List labels",
           "request": {
             "method": "GET",
             "header": [],
@@ -592,7 +611,7 @@
           }
         },
         {
-          "name": "Generate label",
+          "name": "POST Generate label",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
