@@ -21,6 +21,8 @@ export default function AuditLogsPage() {
   const [filterEntityType, setFilterEntityType] = useState<string>("all");
   const [filterAction, setFilterAction] = useState<string>("all");
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     loadLogs();
@@ -44,6 +46,10 @@ export default function AuditLogsPage() {
   };
 
   const filteredLogs = logs;
+  const paginatedLogs = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredLogs.slice(start, start + pageSize);
+  }, [filteredLogs, page, pageSize]);
 
   const getActionColor = (action: string) => {
     if (action.includes("CREATED")) return "bg-blue-50 text-blue-700";
