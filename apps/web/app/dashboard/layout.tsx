@@ -6,7 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { getCookie, deleteCookie, setCookie } from "@/utils/cookies";
 import { authFetch } from "@/utils/api";
 
-const navItems = [
+const navItemsBase = [
   { href: "/dashboard", label: "Overview", icon: "📊" },
   { href: "/dashboard/orders", label: "Orders", icon: "📦" },
   { href: "/dashboard/inventory", label: "Inventory", icon: "📋" },
@@ -17,16 +17,17 @@ const navItems = [
   { href: "/dashboard/workers", label: "Workers", icon: "⚙️" },
   { href: "/dashboard/labels", label: "Labels", icon: "🏷️" },
   { href: "/dashboard/audit", label: "Audit Logs", icon: "📝" },
-  { href: "/dashboard/users", label: "Users", icon: "👥" },
 ];
+const navItemUsers = { href: "/dashboard/users", label: "Users", icon: "👥" };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [userName, setUserName] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [integrations, setIntegrations] = useState<any[]>([]);
-  const [shopifyConnected, setShopifyConnected] = useState(false);
+  const [connectedChannels, setConnectedChannels] = useState<{ id: string; name: string }[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -58,23 +59,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       try {
         const parsed = JSON.parse(stored);
         setUserName(parsed?.name || parsed?.email || null);
+        setUserRole(parsed?.role ?? null);
       } catch {
         setUserName(null);
+        setUserRole(null);
       }
     }
+    // Refresh user role from API (e.g. so admin sees Users menu)
+    authFetch("/auth/me")
+      .then((user: { role?: string }) => {
+        if (user?.role) setUserRole(user.role);
+      })
+      .catch(() => {});
     loadIntegrations();
-  }, [router]);
+    loadConnectedChannels();
+  }, [router, pathname]);
 
   const loadIntegrations = async () => {
     try {
-      const [configData, shopifyStatusRes] = await Promise.all([
-        authFetch("/config/status").catch(() => ({ integrations: [] })),
-        authFetch("/integrations/shopify/status").catch(() => ({ connected: false })),
-      ]);
+      const configData = await authFetch("/config/status").catch(() => ({ integrations: [] }));
       setIntegrations(configData?.integrations || []);
-      setShopifyConnected(!!shopifyStatusRes?.connected);
     } catch (err) {
       console.error("Failed to load integrations:", err);
+    }
+  };
+
+  const loadConnectedChannels = async () => {
+    try {
+      const list = await authFetch("/integrations/connected-summary").catch(() => []);
+      setConnectedChannels(Array.isArray(list) ? list : []);
+    } catch {
+      setConnectedChannels([]);
     }
   };
 
@@ -85,15 +100,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  const getChannelStatus = (type: string) => {
-    if (type === "SHOPIFY") {
-      if (shopifyConnected) return "✅";
-      const integration = integrations.find((i) => i.type === type);
-      return integration?.status === "CONNECTED" ? "✅" : "❌";
-    }
-    const integration = integrations.find((i) => i.type === type);
-    return integration?.status === "CONNECTED" ? "✅" : "❌";
-  };
+  const navItems = userRole === "ADMIN"
+    ? [...navItemsBase, navItemUsers]
+    : navItemsBase;
 
   const closeSidebar = () => setSidebarOpen(false);
 
@@ -168,23 +177,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           )}
 
-          {/* Channel Badges - hide when collapsed */}
-          {!sidebarCollapsed && (
+          {/* Connected channels only - dynamic from API */}
+          {!sidebarCollapsed && connectedChannels.length > 0 && (
           <div className="px-6 mb-6 shrink-0">
             <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Channels</p>
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-700">Shopify</span>
-                <span>{getChannelStatus("SHOPIFY")}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-700">Amazon</span>
-                <span>{getChannelStatus("AMAZON")}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-700">Flipkart</span>
-                <span>{getChannelStatus("FLIPKART")}</span>
-              </div>
+              {connectedChannels.map((ch) => (
+                <div key={ch.id} className="flex items-center justify-between text-sm">
+                  <span className="text-slate-700 truncate">{ch.name}</span>
+                  <span className="text-green-600 shrink-0" title="Connected">✓</span>
+                </div>
+              ))}
             </div>
           </div>
           )}

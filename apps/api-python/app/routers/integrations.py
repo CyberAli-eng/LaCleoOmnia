@@ -86,37 +86,66 @@ def _get_integration_catalog() -> dict:
                             {"id": "registerWebhooks", "label": "Register webhooks", "method": "POST", "endpoint": "/integrations/shopify/register-webhooks"},
                             {"id": "webhooks", "label": "View webhooks", "href": "/dashboard/webhooks"},
                         ],
-                        "description": "Sync orders and inventory from your Shopify store",
                     },
                     {
                         "id": "AMAZON",
                         "name": "Amazon",
                         "icon": "📦",
                         "color": "amber",
-                        "connectType": "manual",
-                        "statusEndpoint": "/config/status",
+                        "connectType": "api_key",
+                        "statusEndpoint": "/integrations/providers/amazon/status",
+                        "connectEndpoint": "/integrations/providers/amazon/connect",
+                        "connectBodyKey": "apiKey",
+                        "connectFormFields": [
+                            {"key": "seller_id", "label": "Seller ID", "type": "text", "placeholder": "Your Amazon Seller Central ID"},
+                            {"key": "apiKey", "label": "API Key / Access Key", "type": "password", "placeholder": "From Seller Central → Apps & Services"},
+                        ],
+                        "setupSteps": [
+                            {"step": 1, "title": "Open Seller Central", "description": "Log in to sellercentral.amazon.in (or your marketplace). Go to Apps & Services → Develop Apps (or Manage Your Apps)."},
+                            {"step": 2, "title": "Create or select an app", "description": "Create a new app or use an existing one. Note the Seller ID (also in Account Info → Merchant Token)."},
+                            {"step": 3, "title": "Get credentials", "description": "From your app or from MWS/SP-API credentials, copy the Seller ID, and the API key (Access Key / LWA client secret). Paste them in the form on this page."},
+                        ],
                         "actions": [],
-                        "description": "Connect your Amazon seller account",
                     },
                     {
                         "id": "FLIPKART",
                         "name": "Flipkart",
                         "icon": "🛒",
                         "color": "purple",
-                        "connectType": "manual",
-                        "statusEndpoint": "/config/status",
+                        "connectType": "api_key",
+                        "statusEndpoint": "/integrations/providers/flipkart/status",
+                        "connectEndpoint": "/integrations/providers/flipkart/connect",
+                        "connectBodyKey": "apiKey",
+                        "connectFormFields": [
+                            {"key": "seller_id", "label": "Seller ID", "type": "text", "placeholder": "Flipkart Seller ID"},
+                            {"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "From Flipkart Seller Hub → API"},
+                        ],
+                        "setupSteps": [
+                            {"step": 1, "title": "Open Seller Hub", "description": "Log in to seller.flipkart.com. Go to Settings or Integrations → API / Developer."},
+                            {"step": 2, "title": "Generate API key", "description": "Create or copy your Seller ID and API key. Flipkart may provide client_id and client_secret; use them as configured by your app."},
+                            {"step": 3, "title": "Enter credentials", "description": "Paste Seller ID and API key in the form on this page and click Connect."},
+                        ],
                         "actions": [],
-                        "description": "Connect your Flipkart seller account",
                     },
                     {
                         "id": "MYNTRA",
                         "name": "Myntra",
                         "icon": "👕",
                         "color": "pink",
-                        "connectType": "manual",
-                        "statusEndpoint": "/config/status",
+                        "connectType": "api_key",
+                        "statusEndpoint": "/integrations/providers/myntra/status",
+                        "connectEndpoint": "/integrations/providers/myntra/connect",
+                        "connectBodyKey": "apiKey",
+                        "connectFormFields": [
+                            {"key": "seller_id", "label": "Partner ID / Seller ID", "type": "text", "placeholder": "Myntra Partner ID"},
+                            {"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "From Myntra Partner Portal"},
+                        ],
+                        "setupSteps": [
+                            {"step": 1, "title": "Open Myntra Partner Portal", "description": "Log in to the Myntra seller/partner portal (partners.myntra.com or as per your invite)."},
+                            {"step": 2, "title": "Find API access", "description": "Navigate to API or Integration section. Generate or copy your Partner ID and API key/token."},
+                            {"step": 3, "title": "Enter credentials", "description": "Paste Partner ID and API key in the form on this page and click Connect."},
+                        ],
                         "actions": [],
-                        "description": "Connect your Myntra seller account",
                     },
                 ],
             },
@@ -157,8 +186,13 @@ def _get_integration_catalog() -> dict:
                             {"key": "refresh_token", "label": "Refresh Token", "type": "password", "placeholder": "OAuth2 Refresh Token"},
                             {"key": "customer_id", "label": "Customer ID (optional)", "type": "text", "placeholder": "Google Ads customer ID"}
                         ],
+                        "setupSteps": [
+                            {"step": 1, "title": "Enable Google Ads API", "description": "In Google Cloud Console create a project and enable Google Ads API. Create OAuth 2.0 credentials (Desktop or Web)."},
+                            {"step": 2, "title": "Get Developer Token", "description": "In Google Ads → Tools → API Center, apply for a Developer Token. Use Test account for development."},
+                            {"step": 3, "title": "OAuth and refresh token", "description": "Use the OAuth flow to get Client ID, Client Secret, and Refresh Token. Optionally note your Customer ID (without dashes)."},
+                            {"step": 4, "title": "Enter credentials", "description": "Paste Developer Token, Client ID, Client Secret, Refresh Token (and optional Customer ID) in the form and click Connect."},
+                        ],
                         "actions": [],
-                        "description": "Sync daily ad spend from Google Ads for CAC. Converts to INR. Synced daily at 00:30 IST.",
                     },
                 ],
             },
@@ -177,10 +211,14 @@ def _get_integration_catalog() -> dict:
                         "connectEndpoint": "/integrations/providers/delhivery/connect",
                         "connectBodyKey": "apiKey",
                         "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "Your Delhivery API key"}],
+                        "setupSteps": [
+                            {"step": 1, "title": "Log in to Delhivery", "description": "Go to the Delhivery partner/carrier dashboard and sign in with your account."},
+                            {"step": 2, "title": "Get API key", "description": "Navigate to API or Integration section. Generate or copy your API key (used for authentication)."},
+                            {"step": 3, "title": "Enter API key", "description": "Paste your API key in the form on this page and click Connect. Shipment sync runs every 30 minutes."},
+                        ],
                         "actions": [
                             {"id": "syncShipments", "label": "Sync shipments", "method": "POST", "endpoint": "/shipments/sync", "primary": True},
                         ],
-                        "description": "Paste your API key below to connect. Track shipments, RTO and lost status every 30 minutes.",
                     },
                     {
                         "id": "selloship",
@@ -192,10 +230,14 @@ def _get_integration_catalog() -> dict:
                         "connectEndpoint": "/integrations/providers/selloship/connect",
                         "connectBodyKey": "apiKey",
                         "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "Your Selloship API key"}],
+                        "setupSteps": [
+                            {"step": 1, "title": "Log in to Selloship", "description": "Access your Selloship dashboard or partner portal."},
+                            {"step": 2, "title": "Get API key", "description": "Find API or Integration settings. Copy your API key (or use username/password if using token-based auth)."},
+                            {"step": 3, "title": "Enter API key", "description": "Paste your API key in the form on this page and click Connect. Shipment sync runs every 30 minutes."},
+                        ],
                         "actions": [
                             {"id": "syncShipments", "label": "Sync shipments", "method": "POST", "endpoint": "/shipments/sync", "primary": True},
                         ],
-                        "description": "Paste your API key below to connect. Track shipments, RTO and lost status every 30 minutes.",
                     },
                 ],
             },
@@ -211,10 +253,58 @@ async def get_integration_catalog(
     return _get_integration_catalog()
 
 
+def _provider_id_to_display_name() -> dict[str, str]:
+    """Build map provider_id -> display name from catalog."""
+    catalog = _get_integration_catalog()
+    out = {}
+    for section in catalog.get("sections", []):
+        for p in section.get("providers", []):
+            out[p["id"]] = p.get("name", p["id"])
+    return out
+
+
+@router.get("/connected-summary")
+async def get_connected_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return list of connected channel/provider ids and display names (for sidebar). Only connected, no crosses."""
+    names = _provider_id_to_display_name()
+    result: list[dict[str, str]] = []
+    # ChannelAccount integrations (SHOPIFY, AMAZON, FLIPKART, MYNTRA)
+    accounts = (
+        db.query(ChannelAccount)
+        .filter(
+            ChannelAccount.user_id == current_user.id,
+            ChannelAccount.status == ChannelAccountStatus.CONNECTED,
+        )
+        .all()
+    )
+    seen = set()
+    for acc in accounts:
+        if not acc.channel:
+            continue
+        ch_type = acc.channel.name.value if hasattr(acc.channel.name, "value") else str(acc.channel.name)
+        if ch_type not in seen:
+            seen.add(ch_type)
+            result.append({"id": ch_type, "name": names.get(ch_type, ch_type)})
+    # Credential-based providers (meta_ads, google_ads, delhivery, selloship)
+    for pid in ALLOWED_CREDENTIAL_PROVIDERS:
+        if pid in seen:
+            continue
+        st = _get_provider_credential_status(db, current_user.id, pid)
+        if st.get("connected"):
+            seen.add(pid)
+            # Map lowercase provider_id to catalog id (e.g. amazon -> AMAZON) for display name
+            name = names.get(pid) or names.get(pid.upper()) or pid.replace("_", " ").title()
+            result.append({"id": pid, "name": name})
+    return result
+
+
 # Providers that use ProviderCredential + optional env fallback. Add new api_key providers here.
 CREDENTIAL_PROVIDER_ENV_KEYS: dict[str, str] = {"delhivery": "DELHIVERY_API_KEY", "selloship": "SELLOSHIP_API_KEY"}
 # Providers allowed for generic /providers/{id}/status and /providers/{id}/connect (catalog-driven).
-ALLOWED_CREDENTIAL_PROVIDERS: set[str] = {"delhivery", "selloship", "meta_ads", "google_ads"}
+ALLOWED_CREDENTIAL_PROVIDERS: set[str] = {"delhivery", "selloship", "meta_ads", "google_ads", "amazon", "flipkart", "myntra"}
 
 
 def _get_shopify_app_credentials(db: Session, user_id: str) -> dict | None:
@@ -281,7 +371,7 @@ async def connect_shopify_app(
     return {"connected": True, "message": "Shopify App credentials saved. You can now click Connect."}
 
 
-def _get_provider_credential_status(db: Session, user_id: int, provider_id: str) -> dict:
+def _get_provider_credential_status(db: Session, user_id: str, provider_id: str) -> dict:
     """Return connected status for a credential-based provider (user key or env)."""
     cred = db.query(ProviderCredential).filter(
         ProviderCredential.user_id == user_id,

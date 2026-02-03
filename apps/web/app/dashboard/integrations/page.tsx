@@ -332,7 +332,7 @@ function IntegrationsPageContent() {
             <h2 className="text-lg font-semibold text-slate-900">{section.title}</h2>
             <p className="text-sm text-slate-600 mt-0.5">{section.description}</p>
           </div>
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {section.providers.map((provider) => {
               const st = statusByProvider[provider.id] ?? {};
               const isConnected = st.connected === true;
@@ -343,11 +343,13 @@ function IntegrationsPageContent() {
               return (
                 <div
                   key={provider.id}
-                  className="rounded-lg border border-slate-200 bg-white p-6 hover:shadow-md transition-shadow"
+                  className="rounded-xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm hover:shadow-md hover:border-slate-300/80 transition-all duration-200 flex flex-col"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="text-3xl">{provider.icon}</div>
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-2xl">
+                        {provider.icon}
+                      </div>
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-lg font-semibold text-slate-900">{provider.name}</h3>
@@ -383,9 +385,6 @@ function IntegrationsPageContent() {
                             </span>
                           )}
                         </div>
-                        {provider.description && (
-                          <p className="text-xs text-slate-500 mt-2">{provider.description}</p>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -425,12 +424,6 @@ function IntegrationsPageContent() {
                           <>
                             {provider.setupStatusEndpoint && (statusByProvider[provider.id]?.setupConfigured !== true) ? (
                               <div className="space-y-3">
-                                {provider.setupGuide && (
-                                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600">
-                                    <p className="font-medium text-slate-700 mb-1">Setup in Shopify Admin</p>
-                                    <p className="whitespace-pre-wrap">{provider.setupGuide}</p>
-                                  </div>
-                                )}
                                 {showSetupForm !== provider.id ? (
                                   <button
                                     type="button"
