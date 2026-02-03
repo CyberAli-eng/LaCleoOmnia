@@ -10,6 +10,7 @@ Welcome to LaCleoOmnia! This is your complete order management solution.
 - **[USER_GUIDE.md](./USER_GUIDE.md)** - Complete user manual with all features
 - **[INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md)** - Detailed store integration instructions
 - **[schema.md](./schema.md)** - Database schema (tables, enums, relationships)
+- **[API_LIST.md](./API_LIST.md)** - API endpoints used for inventory, orders, integrations, and more
 
 ### 🚀 Quick Start
 

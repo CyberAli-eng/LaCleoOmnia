@@ -151,7 +151,12 @@ if cors_regex:
     logger.info(f"   + Regex pattern: {cors_regex}")
 logger.info(f"   Allowed origins: {settings.ALLOWED_ORIGINS}")
 
-# Include routers
+# Include routers (mock first when MOCK_DATA=true so fixture data is returned for key endpoints)
+if getattr(settings, "MOCK_DATA", False):
+    from app.routers import mock
+    app.include_router(mock.router, prefix="/api", tags=["mock"])
+    logger.info("📦 MOCK_DATA=true: mock API enabled for orders, inventory, analytics, integrations, etc.")
+
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(channels.router, prefix="/api/channels", tags=["channels"])
 app.include_router(orders.router, prefix="/api/orders", tags=["orders"])

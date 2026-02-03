@@ -110,6 +110,9 @@ class Settings:
     SELLOSHIP_API_KEY = os.getenv("SELLOSHIP_API_KEY", "")
     SELLOSHIP_API_BASE_URL = os.getenv("SELLOSHIP_API_BASE_URL", "https://api.selloship.com")
     
+    # Mock API (return fixture data for key endpoints; no DB required)
+    MOCK_DATA = os.getenv("MOCK_DATA", "").lower() in ("1", "true", "yes")
+
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO" if IS_PRODUCTION else "DEBUG")
     
