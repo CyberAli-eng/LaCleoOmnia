@@ -17,6 +17,7 @@ interface Label {
 const COURIERS = [
   { id: "shiprocket", name: "Shiprocket", icon: "🚚" },
   { id: "delhivery", name: "Delhivery", icon: "📦" },
+  { id: "selloship", name: "Selloship", icon: "📦" },
   { id: "bluedart", name: "BlueDart", icon: "✈️" },
   { id: "fedex", name: "FedEx", icon: "📮" },
   { id: "dhl", name: "DHL", icon: "🌐" },

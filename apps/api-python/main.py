@@ -17,7 +17,7 @@ from app.routers import auth, channels, orders, inventory, products, warehouses,
 from app.database import engine, Base, get_db, SessionLocal
 from app.config import settings
 from app.services.shopify_oauth import ShopifyOAuthService
-from app.services.delhivery_service import sync_delhivery_shipments
+from app.services.shipment_sync import sync_shipments
 from app.services.ad_spend_sync import sync_ad_spend_for_date, get_first_user_id_for_sync
 from app.services.credentials import encrypt_token, decrypt_token
 from app.models import (
@@ -185,38 +185,34 @@ async def health():
     }
 
 
-# --- Delhivery 30-min poll: real-time RTO/Lost → profit recalc ---
-DELHIVERY_POLL_INTERVAL_SEC = int(os.getenv("DELHIVERY_POLL_INTERVAL_SEC", "1800"))  # 30 min
-DELHIVERY_POLL_FIRST_DELAY_SEC = int(os.getenv("DELHIVERY_POLL_FIRST_DELAY_SEC", "120"))  # first run after 2 min
+# --- Unified courier 30-min poll: Delhivery + Selloship, RTO/Lost → profit recalc ---
+SHIPMENT_POLL_INTERVAL_SEC = int(os.getenv("SHIPMENT_POLL_INTERVAL_SEC", "1800"))  # 30 min
+SHIPMENT_POLL_FIRST_DELAY_SEC = int(os.getenv("SHIPMENT_POLL_FIRST_DELAY_SEC", "120"))  # first run after 2 min
 
 
-async def _delhivery_sync_loop() -> None:
-    """Background: poll Delhivery every 30 min, update shipment status, trigger profit recalc."""
-    await asyncio.sleep(DELHIVERY_POLL_FIRST_DELAY_SEC)
-    api_key = (getattr(settings, "DELHIVERY_API_KEY", None) or "").strip()
-    if not api_key:
-        logger.info("Delhivery 30-min poll: DELHIVERY_API_KEY not set; background sync disabled")
-        return
-    logger.info("Delhivery 30-min poll started (interval=%ss)", DELHIVERY_POLL_INTERVAL_SEC)
+async def _shipments_sync_loop() -> None:
+    """Background: poll Delhivery and Selloship every 30 min; update status/cost; trigger profit recalc. Single loop."""
+    await asyncio.sleep(SHIPMENT_POLL_FIRST_DELAY_SEC)
+    logger.info("Shipments 30-min poll started (interval=%ss)", SHIPMENT_POLL_INTERVAL_SEC)
     while True:
         db = None
         try:
             db = SessionLocal()
-            result = await sync_delhivery_shipments(db, api_key=api_key)
+            result = await sync_shipments(db, user_id=None)
             if result.get("synced", 0) > 0 or result.get("errors"):
-                logger.info("Delhivery sync: synced=%s errors=%s", result.get("synced", 0), len(result.get("errors", [])))
+                logger.info("Shipments sync: synced=%s errors=%s", result.get("synced", 0), len(result.get("errors", [])))
         except Exception as e:
-            logger.exception("Delhivery 30-min sync failed: %s", e)
+            logger.exception("Shipments 30-min sync failed: %s", e)
         finally:
             if db:
                 db.close()
-        await asyncio.sleep(DELHIVERY_POLL_INTERVAL_SEC)
+        await asyncio.sleep(SHIPMENT_POLL_INTERVAL_SEC)
 
 
 @app.on_event("startup")
-async def startup_delhivery_poll() -> None:
-    """Start background Delhivery sync loop (every 30 min)."""
-    asyncio.create_task(_delhivery_sync_loop())
+async def startup_shipments_poll() -> None:
+    """Start background unified courier sync loop (every 30 min)."""
+    asyncio.create_task(_shipments_sync_loop())
 
 
 # --- Ad spend daily sync at 00:30 IST (CAC) ---

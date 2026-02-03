@@ -38,6 +38,8 @@ npm run dev
 
 Frontend will run at: `http://localhost:3000`
 
+**Flow:** Login → Integrations (connect Shopify, then optionally Delhivery/Selloship) → Sync/Import orders → Orders → Labels (create shipment with AWB) → Sync shipments for tracking/RTO; profit updates from SKU costs and courier status.
+
 ## Important Notes
 
 ### ⚠️ Local Development vs Production

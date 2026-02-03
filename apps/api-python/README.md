@@ -90,7 +90,13 @@ apps/api-python/
 │   └── services/            # Business logic
 │       ├── credentials.py
 │       ├── shopify.py
-│       └── order_import.py
+│       ├── shopify_service.py
+│       ├── order_import.py
+│       ├── delhivery_service.py
+│       ├── selloship_service.py
+│       ├── shipment_sync.py   # Unified Delhivery + Selloship sync
+│       ├── profit_calculator.py
+│       └── ad_spend_sync.py
 ├── alembic/                 # Database migrations
 ├── main.py                  # FastAPI app entry point
 ├── seed.py                  # Database seeding
@@ -107,11 +113,12 @@ All endpoints are prefixed with `/api`
 - `GET /api/auth/me` - Get current user
 - `POST /api/auth/logout` - Logout
 
-### Channels
+### Channels & Integrations
 - `GET /api/channels` - List channels
-- `POST /api/channels/shopify/connect` - Connect Shopify
-- `POST /api/channels/shopify/test` - Test connection
-- `POST /api/channels/shopify/import-orders` - Import orders
+- `GET /api/integrations/catalog` - Integration catalog (Shopify, Delhivery, Selloship, Meta/Google Ads)
+- `GET /api/integrations/providers/{provider_id}/status` - Provider connection status
+- `POST /api/integrations/providers/{provider_id}/connect` - Connect provider (e.g. delhivery, selloship)
+- Shopify OAuth: `/auth/shopify/callback` (public), channels/shopify routes for connect/test/import
 
 ### Orders
 - `GET /api/orders` - List orders
@@ -137,13 +144,26 @@ All endpoints are prefixed with `/api`
 - `POST /api/warehouses` - Create warehouse
 - `PATCH /api/warehouses/{id}` - Update warehouse
 
-### Shipments
+### Shipments (Delhivery + Selloship)
 - `GET /api/shipments` - List shipments
+- `GET /api/shipments/order/{order_id}` - Get shipment by order
+- `POST /api/shipments` - Create shipment (order_id, awb_number, courier_name, forward_cost, reverse_cost)
+- `POST /api/shipments/sync` - Sync all active shipments (current user; uses ProviderCredential or env keys)
 - `GET /api/shipments/{id}` - Get shipment
 
+### Profit & SKU costs
+- `GET /api/sku-costs` - List SKU costs
+- `POST /api/sku-costs` - Create/update SKU cost
+- `GET /api/profit/order/{order_id}` - Get profit for order
+- `POST /api/profit/recompute` - Recompute profit (all or single order)
+
+### Analytics
+- `GET /api/analytics/summary` - Dashboard summary
+- `GET /api/analytics/profit-summary` - Profit KPIs (revenue, net profit, margin, RTO/loss)
+
 ### Sync
-- `GET /api/sync/jobs` - List sync jobs
-- `GET /api/sync/logs` - List sync logs
+- `GET /api/sync/jobs` - List sync jobs (when implemented)
+- Workers: Shopify order/inventory sync; unified shipment sync (Delhivery + Selloship) every 30 min
 
 ## 🔐 Authentication
 

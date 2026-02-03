@@ -62,7 +62,7 @@ This 5-minute guide will get you up and running with LaCleoOmnia.
 2. Click **"View"** on any order
 3. Click **"Confirm"** → Order is confirmed
 4. Click **"Pack"** → Order is packed
-5. Click **"Ship"** → Select courier and generate label
+5. Click **"Ship"** → Select courier (e.g. Delhivery, Selloship) and enter AWB or generate label
 
 ✅ **Order shipped!**
 
@@ -72,10 +72,12 @@ This 5-minute guide will get you up and running with LaCleoOmnia.
 
 ### What's Next?
 
-- **Explore Dashboard**: See your business overview
-- **Manage Inventory**: Set up stock levels
-- **Generate Labels**: Create shipping labels
-- **View Analytics**: Check your business metrics
+- **Explore Dashboard**: See your business overview and profit summary
+- **Connect couriers**: Integrations → Logistics → Delhivery / Selloship (paste API key) for tracking and RTO
+- **Manage Inventory**: Set up stock levels; sync from Shopify
+- **Set SKU costs**: Costs page → add product/packaging costs for accurate profit
+- **Generate Labels**: Create shipping labels (Delhivery, Selloship, etc.)
+- **View Analytics**: Check revenue, net profit, margin, and RTO/loss
 
 ### Need Help?
 

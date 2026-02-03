@@ -105,6 +105,10 @@ class Settings:
     # Delhivery tracking
     DELHIVERY_API_KEY = os.getenv("DELHIVERY_API_KEY", "")
     DELHIVERY_TRACKING_BASE_URL = os.getenv("DELHIVERY_TRACKING_BASE_URL", "https://track.delhivery.com")
+
+    # Selloship tracking (same pattern as Delhivery)
+    SELLOSHIP_API_KEY = os.getenv("SELLOSHIP_API_KEY", "")
+    SELLOSHIP_API_BASE_URL = os.getenv("SELLOSHIP_API_BASE_URL", "https://api.selloship.com")
     
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO" if IS_PRODUCTION else "DEBUG")

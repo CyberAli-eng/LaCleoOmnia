@@ -55,6 +55,7 @@ See [LOCAL_SETUP.md](./LOCAL_SETUP.md) for detailed manual instructions.
 1. **API Health:** http://localhost:8000/health
 2. **API Docs:** http://localhost:8000/docs
 3. **Login:** Use `admin@local` / `Admin@123`
+4. **Shipments sync:** After connecting Delhivery/Selloship in Integrations, use `POST /api/shipments/sync` (with JWT) or rely on background sync every 30 min (if API keys are set in .env or UI).
 
 ## Troubleshooting
 

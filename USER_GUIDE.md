@@ -9,8 +9,10 @@ Welcome to LaCleoOmnia! This guide will help you get started with managing your 
 3. [Managing Orders](#managing-orders)
 4. [Inventory Management](#inventory-management)
 5. [Shipping Labels](#shipping-labels)
-6. [Managing Multiple Stores](#managing-multiple-stores)
-7. [Troubleshooting](#troubleshooting)
+6. [Integrations (Logistics & Marketing)](#integrations-logistics--marketing)
+7. [Managing Multiple Stores](#managing-multiple-stores)
+8. [Profit & Costs](#profit--costs)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -34,8 +36,9 @@ Once logged in, you'll see:
 - **Orders**: All your orders from connected stores
 - **Inventory**: Product stock levels across warehouses
 - **Integrations**: Connect and manage your stores
-- **Labels**: Generate shipping labels
-- **Analytics**: Business insights and reports
+- **Labels**: Generate shipping labels (Delhivery, Selloship, and more)
+- **Integrations**: Connect stores (Shopify), couriers (Delhivery, Selloship), and marketing (Meta Ads, Google Ads)
+- **Analytics**: Business insights, profit summary, and reports
 
 ---
 
@@ -244,6 +247,7 @@ You can perform actions on multiple orders at once:
    - **Courier**: Select shipping provider
      - Shiprocket
      - Delhivery
+     - Selloship
      - BlueDart
      - FedEx
      - DHL
@@ -275,6 +279,23 @@ You can perform actions on multiple orders at once:
    - Courier details
    - Status
    - Print and download options
+
+---
+
+## Integrations (Logistics & Marketing)
+
+### Logistics & Supply Chain (Delhivery, Selloship)
+
+1. Go to **Integrations** in the sidebar.
+2. Find the **Logistics & Supply Chain** section.
+3. **Delhivery** or **Selloship**: Click **Connect**, paste your **API Key**, and save. Status will show **Connected**.
+4. **Sync shipments**: Click **Sync shipments** (or use the same action on the card) to fetch tracking status and update RTO/delivered/lost. This runs automatically every 30 minutes in the background when API keys are configured.
+5. Shipments created with courier **Delhivery** or **Selloship** will be synced; status and costs (forward/reverse) update profit automatically.
+
+### Marketing Channels (Meta Ads, Google Ads)
+
+- In **Integrations** → **Marketing Channels**, connect **Meta Ads** or **Google Ads** with your credentials (e.g. Ad Account ID + Access Token for Meta).
+- Daily ad spend is synced (e.g. at 00:30 IST) and used as blended CAC in order profit. You can also trigger **Sync ad spend** manually from the integrations page.
 
 ---
 
@@ -362,7 +383,21 @@ The dashboard shows:
 ### View Analytics
 
 1. Click **"Analytics"** in the sidebar
-2. See detailed reports and insights
+2. See detailed reports, profit summary (revenue, net profit, margin, RTO/loss), and insights
+
+---
+
+## Profit & Costs
+
+### SKU costs (Costs page)
+
+- Go to **Costs** (or **Dashboard → Costs**) to manage **SKU costs** (product cost, packaging, box, inbound). These are used to compute order profit.
+- Add or edit costs per SKU; then use **Recompute profit** (or wait for automatic recompute on order/shipment updates) so orders show correct net profit.
+
+### Order profit
+
+- **Order detail** shows profit breakdown: revenue, product cost, shipping, ads (CAC), net profit.
+- Profit is recomputed when: orders sync, SKU costs change, shipment status/costs update (Delhivery/Selloship sync), or when you trigger **Recompute** from the profit/Costs area.
 
 ---
 
@@ -512,10 +547,13 @@ If you're an admin, you can manage team members:
 | Task | Steps |
 |------|-------|
 | Connect Shopify | Integrations → Shopify → Connect via OAuth |
-| Import Orders | Integrations → Shopify → Import Orders |
+| Import Orders | Integrations → Shopify → Sync / Import Orders |
+| Connect couriers | Integrations → Logistics → Delhivery / Selloship → Paste API Key |
+| Sync shipments | Integrations → Logistics → Sync shipments (or automatic every 30 min) |
 | Confirm Order | Orders → View → Confirm |
-| Generate Label | Labels → Generate Label → Select Order & Courier |
+| Generate Label | Labels → Generate Label → Select Order & Courier (e.g. Delhivery, Selloship) |
 | Adjust Inventory | Inventory → Adjust → Enter Quantity |
+| Set SKU costs | Costs → Add/Edit SKU costs → Recompute profit |
 | View Webhooks | Webhooks → See Events Table |
 
 ### Keyboard Shortcuts

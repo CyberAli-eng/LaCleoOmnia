@@ -119,13 +119,16 @@ pip install -r requirements.txt
 ## Step 7: Run Database Migrations
 
 ```bash
-# Create tables
+# Apply Alembic migrations (recommended for schema changes)
+alembic upgrade head
+
+# Seed initial data (admin user, channels, warehouse)
 python seed.py
 ```
 
 This will:
-- Create all database tables
-- Seed initial data (admin user, channels, warehouse)
+- Apply any pending migrations (e.g. orders.shipping_address, sync_jobs.completed_at, ad_spend_daily, shopify_inventory)
+- Create/update tables and seed initial data
 
 ## Step 8: Start the API Server
 

@@ -36,9 +36,13 @@
 - `HOST` - Server host (auto: `127.0.0.1` for local, `0.0.0.0` for cloud)
 - `PORT` - Server port (default: `8000`)
 - `ALLOWED_ORIGINS` - Comma-separated CORS origins
-- `WEBHOOK_BASE_URL` - Base URL for webhooks
-- `ENCRYPTION_KEY` - 32-character encryption key
+- `WEBHOOK_BASE_URL` - Base URL for webhooks (e.g. `https://yourapi.onrender.com`)
+- `ENCRYPTION_KEY` - 32-character encryption key (for ProviderCredential, etc.)
 - `LOG_LEVEL` - Logging level (default: `INFO` for prod, `DEBUG` for dev)
+- `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_SCOPES` - Optional; used when user has not set credentials in UI
+- `DELHIVERY_API_KEY`, `DELHIVERY_TRACKING_BASE_URL` - Optional; for unified shipment sync (Delhivery)
+- `SELLOSHIP_API_KEY`, `SELLOSHIP_API_BASE_URL` - Optional; for unified shipment sync (Selloship)
+- `SHIPMENT_POLL_INTERVAL_SEC`, `SHIPMENT_POLL_FIRST_DELAY_SEC` - Optional; default 1800 (30 min), 120 (first run delay)
 
 ## Automatic Detection
 

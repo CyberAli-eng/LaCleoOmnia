@@ -35,12 +35,10 @@
    - Settings → Apps and sales channels
    - Develop apps → Create app
    - Configure Admin API scopes:
-     - ✅ read_orders
-     - ✅ write_orders
-     - ✅ read_products
-     - ✅ write_products
-     - ✅ read_inventory
-     - ✅ write_inventory
+     - ✅ read_orders, write_orders
+     - ✅ read_products, write_products
+     - ✅ read_inventory, write_inventory
+     - ✅ read_locations (required for inventory sync)
    - Install app
    - Copy Admin API access token
 
@@ -149,6 +147,9 @@ Dashboard → Integrations (in sidebar)
    **Inventory:**
    - ✅ `read_inventory`
    - ✅ `write_inventory`
+
+   **Locations** (required for inventory sync):
+   - ✅ `read_locations`
 
 4. Click **"Save"**
 
@@ -371,9 +372,9 @@ If you used manual token, webhooks will register if `WEBHOOK_BASE_URL` is config
    - Map your products/SKUs
    - Set initial stock levels
 
-3. **Configure Shipping**
-   - Set up courier preferences
-   - Configure shipping rules
+3. **Configure Logistics (optional)**
+   - Integrations → Logistics → Delhivery / Selloship: paste API key
+   - Sync shipments for tracking and RTO; profit updates automatically
 
 4. **Start Processing Orders**
    - Confirm orders

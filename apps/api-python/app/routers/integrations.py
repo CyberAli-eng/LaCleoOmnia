@@ -180,10 +180,15 @@ def _get_integration_catalog() -> dict:
                         "name": "Selloship",
                         "icon": "📦",
                         "color": "orange",
-                        "connectType": "manual",
-                        "statusEndpoint": "/config/status",
-                        "actions": [],
-                        "description": "Connect couriers and fulfillment for tracking and RTO. Integration coming soon.",
+                        "connectType": "api_key",
+                        "statusEndpoint": "/integrations/providers/selloship/status",
+                        "connectEndpoint": "/integrations/providers/selloship/connect",
+                        "connectBodyKey": "apiKey",
+                        "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "Your Selloship API key"}],
+                        "actions": [
+                            {"id": "syncShipments", "label": "Sync shipments", "method": "POST", "endpoint": "/shipments/sync", "primary": True},
+                        ],
+                        "description": "Paste your API key below to connect. Track shipments, RTO and lost status every 30 minutes.",
                     },
                 ],
             },
@@ -200,11 +205,9 @@ async def get_integration_catalog(
 
 
 # Providers that use ProviderCredential + optional env fallback. Add new api_key providers here.
-CREDENTIAL_PROVIDER_ENV_KEYS: dict[str, str] = {"delhivery": "DELHIVERY_API_KEY"}
+CREDENTIAL_PROVIDER_ENV_KEYS: dict[str, str] = {"delhivery": "DELHIVERY_API_KEY", "selloship": "SELLOSHIP_API_KEY"}
 # Providers allowed for generic /providers/{id}/status and /providers/{id}/connect (catalog-driven).
-ALLOWED_CREDENTIAL_PROVIDERS: set[str] = {"delhivery", "meta_ads", "google_ads"}
-# Providers allowed for generic /providers/{id}/status and /providers/{id}/connect (catalog-driven).
-ALLOWED_CREDENTIAL_PROVIDERS: set[str] = {"delhivery", "meta_ads", "google_ads"}
+ALLOWED_CREDENTIAL_PROVIDERS: set[str] = {"delhivery", "selloship", "meta_ads", "google_ads"}
 
 
 def _get_shopify_app_credentials(db: Session, user_id: str) -> dict | None:
