@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { authFetch } from "@/utils/api";
+import { TablePagination } from "@/app/components/TablePagination";
 
 interface InventoryItem {
   id: string;
@@ -43,10 +44,18 @@ export default function InventoryPage() {
   const [shopifyInventory, setShopifyInventory] = useState<{ sku: string; product_name: string; available: number; location: string }[]>([]);
   const [shopifyInventoryWarning, setShopifyInventoryWarning] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [pageShopify, setPageShopify] = useState(1);
+  const [pageSizeShopify, setPageSizeShopify] = useState(25);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, selectedWarehouse, lowStockOnly]);
 
   const handleSyncShopify = async () => {
     setSyncing(true);
@@ -138,6 +147,16 @@ export default function InventoryPage() {
     const matchesLowStock = !lowStockOnly || item.availableQty < 10;
     return matchesSearch && matchesWarehouse && matchesLowStock;
   });
+
+  const paginatedInventory = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredInventory.slice(start, start + pageSize);
+  }, [filteredInventory, page, pageSize]);
+
+  const paginatedShopifyInventory = useMemo(() => {
+    const start = (pageShopify - 1) * pageSizeShopify;
+    return shopifyInventory.slice(start, start + pageSizeShopify);
+  }, [shopifyInventory, pageShopify, pageSizeShopify]);
 
   const totalItems = new Set(displayInventory.map((i) => i.variant.sku)).size;
   const totalQuantity = displayInventory.reduce((sum, item) => sum + item.totalQty, 0);
@@ -264,7 +283,7 @@ export default function InventoryPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredInventory.map((item) => (
+              {paginatedInventory.map((item) => (
                 <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="py-3 px-4">
                     <span className="font-medium text-slate-900">{item.variant.sku}</span>
@@ -331,6 +350,19 @@ export default function InventoryPage() {
             </div>
           )}
         </div>
+        {filteredInventory.length > 0 && (
+          <TablePagination
+            currentPage={page}
+            totalItems={filteredInventory.length}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+            itemLabel="items"
+          />
+        )}
       </div>
 
       {/* Shopify inventory (live from API when connected) - same pattern as Orders page */}
@@ -356,7 +388,7 @@ export default function InventoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {shopifyInventory.map((row, idx) => (
+                {paginatedShopifyInventory.map((row, idx) => (
                   <tr key={`${row.sku}-${row.location}-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="py-3 px-4 font-mono text-slate-900">{row.sku}</td>
                     <td className="py-3 px-4 text-slate-700">{row.product_name || "—"}</td>
@@ -367,6 +399,19 @@ export default function InventoryPage() {
               </tbody>
             </table>
           </div>
+          {shopifyInventory.length > 0 && (
+            <TablePagination
+              currentPage={pageShopify}
+              totalItems={shopifyInventory.length}
+              pageSize={pageSizeShopify}
+              onPageChange={setPageShopify}
+              onPageSizeChange={(size) => {
+                setPageSizeShopify(size);
+                setPageShopify(1);
+              }}
+              itemLabel="items"
+            />
+          )}
         </div>
       )}
 

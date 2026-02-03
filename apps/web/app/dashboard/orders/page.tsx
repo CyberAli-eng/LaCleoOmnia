@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { authFetch } from "@/utils/api";
 import { formatCurrency } from "@/utils/currency";
 import Link from "next/link";
+import { TablePagination } from "@/app/components/TablePagination";
 
 interface Order {
   id: string;
@@ -48,10 +49,19 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [bulkAction, setBulkAction] = useState<string>("");
   const [processing, setProcessing] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [pageShopify, setPageShopify] = useState(1);
+  const [pageSizeShopify, setPageSizeShopify] = useState(25);
 
   useEffect(() => {
     loadOrders();
   }, []);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, statusFilter]);
 
   const loadOrders = async () => {
     setLoading(true);
@@ -114,10 +124,16 @@ export default function OrdersPage() {
   };
 
   const toggleAllSelection = () => {
-    if (selectedOrders.size === filteredOrders.length) {
-      setSelectedOrders(new Set());
+    const pageOrderIds = paginatedOrders.map((o) => o.id);
+    const allOnPageSelected = pageOrderIds.every((id) => selectedOrders.has(id));
+    if (allOnPageSelected) {
+      const next = new Set(selectedOrders);
+      pageOrderIds.forEach((id) => next.delete(id));
+      setSelectedOrders(next);
     } else {
-      setSelectedOrders(new Set(filteredOrders.map((o) => o.id)));
+      const next = new Set(selectedOrders);
+      pageOrderIds.forEach((id) => next.add(id));
+      setSelectedOrders(next);
     }
   };
 
@@ -130,6 +146,16 @@ export default function OrdersPage() {
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const paginatedOrders = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredOrders.slice(start, start + pageSize);
+  }, [filteredOrders, page, pageSize]);
+
+  const paginatedShopifyOrders = useMemo(() => {
+    const start = (pageShopify - 1) * pageSizeShopify;
+    return shopifyOrders.slice(start, start + pageSizeShopify);
+  }, [shopifyOrders, pageShopify, pageSizeShopify]);
 
   const statusCounts = {
     all: orders.length,
@@ -269,7 +295,10 @@ export default function OrdersPage() {
                 <th className="text-left py-3 px-4">
                   <input
                     type="checkbox"
-                    checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
+                    checked={
+                      paginatedOrders.length > 0 &&
+                      paginatedOrders.every((o) => selectedOrders.has(o.id))
+                    }
                     onChange={toggleAllSelection}
                     className="rounded border-slate-300"
                   />
@@ -284,7 +313,7 @@ export default function OrdersPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map((order) => (
+              {paginatedOrders.map((order) => (
                 <tr
                   key={order.id}
                   className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
@@ -387,6 +416,19 @@ export default function OrdersPage() {
             </div>
           )}
         </div>
+        {filteredOrders.length > 0 && (
+          <TablePagination
+            currentPage={page}
+            totalItems={filteredOrders.length}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+            itemLabel="orders"
+          />
+        )}
       </div>
 
       {/* Shopify orders (live from API when connected) */}
@@ -408,7 +450,7 @@ export default function OrdersPage() {
                 </tr>
               </thead>
               <tbody>
-                {shopifyOrders.map((o) => (
+                {paginatedShopifyOrders.map((o) => (
                   <tr key={o.id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="py-3 px-4 font-mono text-slate-900">{o.order_id}</td>
                     <td className="py-3 px-4 text-slate-700">{o.customer_name || o.customer || "—"}</td>
@@ -426,6 +468,19 @@ export default function OrdersPage() {
               </tbody>
             </table>
           </div>
+          {shopifyOrders.length > 0 && (
+            <TablePagination
+              currentPage={pageShopify}
+              totalItems={shopifyOrders.length}
+              pageSize={pageSizeShopify}
+              onPageChange={setPageShopify}
+              onPageSizeChange={(size) => {
+                setPageSizeShopify(size);
+                setPageShopify(1);
+              }}
+              itemLabel="orders"
+            />
+          )}
         </div>
       )}
 
