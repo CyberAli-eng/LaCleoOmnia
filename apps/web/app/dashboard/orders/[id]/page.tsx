@@ -47,6 +47,7 @@ interface Order {
     courierName: string;
     awbNumber: string;
     trackingUrl?: string;
+    labelUrl?: string;
     status: string;
     forwardCost?: number;
     reverseCost?: number;
@@ -387,16 +388,28 @@ export default function OrderDetailPage() {
                   <p className="text-xs text-slate-500">AWB Number</p>
                   <p className="mt-1 font-mono text-slate-900">{order.shipment.awbNumber}</p>
                 </div>
-                {order.shipment.trackingUrl && (
-                  <div className="col-span-2">
-                    <a
-                      href={order.shipment.trackingUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-600 hover:text-blue-700 text-sm"
-                    >
-                      Track Shipment →
-                    </a>
+                {(order.shipment.trackingUrl || order.shipment.labelUrl) && (
+                  <div className="col-span-2 flex flex-wrap gap-4">
+                    {order.shipment.labelUrl && (
+                      <a
+                        href={order.shipment.labelUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:text-blue-700 text-sm"
+                      >
+                        Download label →
+                      </a>
+                    )}
+                    {order.shipment.trackingUrl && (
+                      <a
+                        href={order.shipment.trackingUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:text-blue-700 text-sm"
+                      >
+                        Track shipment →
+                      </a>
+                    )}
                   </div>
                 )}
               </div>

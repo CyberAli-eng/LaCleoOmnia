@@ -1,5 +1,5 @@
 """
-Shipment routes: list, get by id or order_id, create, sync Delhivery.
+Shipment routes: list, get by id or order_id, create, sync, generate label (Selloship).
 """
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,9 +7,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Shipment, Order, User, ChannelAccount, ShipmentStatus
+from app.models import Shipment, Order, OrderItem, User, ChannelAccount, ShipmentStatus
 from app.auth import get_current_user
-from app.services.shipment_sync import sync_shipments
+from app.services.shipment_sync import sync_shipments, _get_selloship_credentials
+from app.services.selloship_service import get_selloship_client, build_waybill_payload_from_order
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -27,6 +28,11 @@ class ShipmentCreate(BaseModel):
     label_url: str | None = None
     forward_cost: float = 0.0
     reverse_cost: float = 0.0
+
+
+class GenerateLabelRequest(BaseModel):
+    order_id: str
+    courier_name: str = "selloship"
 
 
 @router.get("")
@@ -133,6 +139,43 @@ async def create_shipment(
     from app.services.profit_calculator import compute_profit_for_order
     compute_profit_for_order(db, body.order_id)
     return _shipment_response(shipment)
+
+
+@router.post("/generate-label")
+async def generate_label(
+    body: GenerateLabelRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate shipping label via Selloship (Base.com waybill). Returns waybill and label URL for use in create shipment."""
+    if (body.courier_name or "").strip().lower() != "selloship":
+        raise HTTPException(status_code=400, detail="Only Selloship is supported for label generation")
+    account_ids = _user_channel_account_ids(db, current_user)
+    order = db.query(Order).filter(Order.id == body.order_id).first()
+    if not order or order.channel_account_id not in account_ids:
+        raise HTTPException(status_code=404, detail="Order not found")
+    existing = db.query(Shipment).filter(Shipment.order_id == body.order_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Order already has a shipment")
+    items = db.query(OrderItem).filter(OrderItem.order_id == body.order_id).all()
+    api_key, username, password = _get_selloship_credentials(db, str(current_user.id))
+    if not api_key and not (username and password):
+        raise HTTPException(
+            status_code=400,
+            detail="Selloship not connected. Connect in Integrations → Logistics → Selloship.",
+        )
+    client = get_selloship_client(api_key=api_key, username=username, password=password)
+    payload = build_waybill_payload_from_order(order, items)
+    result = await client.create_waybill(payload)
+    if (result.get("status") or "").upper() != "SUCCESS":
+        msg = result.get("message") or result.get("reason") or "Label generation failed"
+        raise HTTPException(status_code=400, detail=msg)
+    return {
+        "waybill": result.get("waybill") or "",
+        "shippingLabel": result.get("shippingLabel") or "",
+        "courierName": result.get("courierName") or "Selloship",
+        "routingCode": result.get("routingCode"),
+    }
 
 
 @router.post("/sync")

@@ -11,6 +11,7 @@ from typing import Any, Optional
 import httpx
 
 from app.config import settings
+from app.services.http_client import get_with_retry
 from app.models import ShipmentStatus
 
 logger = logging.getLogger(__name__)
@@ -84,10 +85,9 @@ class DelhiveryClient:
         params = {"waybill": waybill}
         headers = {"Authorization": f"Token {self.api_key}"}
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(url, params=params, headers=headers)
-                resp.raise_for_status()
-                data = resp.json()
+            resp = await get_with_retry(url, params=params, headers=headers, timeout=15.0, max_retries=2)
+            resp.raise_for_status()
+            data = resp.json()
         except httpx.HTTPStatusError as e:
             logger.warning("Delhivery API HTTP error waybill=%s status=%s", waybill, e.response.status_code)
             return {

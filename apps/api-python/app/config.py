@@ -106,9 +106,11 @@ class Settings:
     DELHIVERY_API_KEY = os.getenv("DELHIVERY_API_KEY", "")
     DELHIVERY_TRACKING_BASE_URL = os.getenv("DELHIVERY_TRACKING_BASE_URL", "https://track.delhivery.com")
 
-    # Selloship tracking (same pattern as Delhivery)
+    # Selloship (Base.com Shipper Integration: /authToken, /waybillDetails)
     SELLOSHIP_API_KEY = os.getenv("SELLOSHIP_API_KEY", "")
     SELLOSHIP_API_BASE_URL = os.getenv("SELLOSHIP_API_BASE_URL", "https://api.selloship.com")
+    SELLOSHIP_USERNAME = os.getenv("SELLOSHIP_USERNAME", "")
+    SELLOSHIP_PASSWORD = os.getenv("SELLOSHIP_PASSWORD", "")
     
     # Mock API (return fixture data for key endpoints; no DB required)
     MOCK_DATA = os.getenv("MOCK_DATA", "").lower() in ("1", "true", "yes")

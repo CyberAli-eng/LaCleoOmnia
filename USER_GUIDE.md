@@ -240,6 +240,9 @@ You can perform actions on multiple orders at once:
 
 ### Generate Shipping Label
 
+- **Selloship (Base.com)**: The API can generate a waybill and label PDF for an order (`POST /shipments/generate-label`). Use the returned AWB and label URL when creating the shipment. Connect Selloship in Integrations first.
+- **Manual AWB**: You can also create a shipment with an existing AWB and optional label URL.
+
 1. Go to **Labels** page
 2. Click **"+ Generate Label"**
 3. Select:

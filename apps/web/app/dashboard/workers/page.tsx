@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { authFetch } from "@/utils/api";
+import { TablePagination } from "@/app/components/TablePagination";
 
 interface WorkerJob {
   id: number;
@@ -17,6 +18,8 @@ export default function WorkersPage() {
   const [jobs, setJobs] = useState<WorkerJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const loadJobs = async () => {
     try {
@@ -62,6 +65,11 @@ export default function WorkersPage() {
       setLoading(false);
     }
   };
+
+  const paginatedJobs = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return jobs.slice(start, start + pageSize);
+  }, [jobs, page, pageSize]);
 
   // Backend uses QUEUED, RUNNING, SUCCESS, FAILED
   const jobStats = {
@@ -156,7 +164,7 @@ export default function WorkersPage() {
               </tr>
             </thead>
             <tbody>
-              {jobs.map((job) => (
+              {paginatedJobs.map((job) => (
                 <tr key={job.id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="py-3 px-4">
                     <span className="font-medium text-slate-900">{job.type}</span>
@@ -200,6 +208,16 @@ export default function WorkersPage() {
             <div className="py-12 text-center text-slate-500">No jobs in queue.</div>
           )}
         </div>
+        {jobs.length > 0 && (
+          <TablePagination
+            currentPage={page}
+            totalItems={jobs.length}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            itemLabel="jobs"
+          />
+        )}
       </div>
     </div>
   );

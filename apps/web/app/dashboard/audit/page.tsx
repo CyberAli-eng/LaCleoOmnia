@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { authFetch } from "@/utils/api";
+import { TablePagination } from "@/app/components/TablePagination";
 
 interface AuditLog {
   id: string;
@@ -23,6 +24,7 @@ export default function AuditLogsPage() {
 
   useEffect(() => {
     loadLogs();
+    setPage(1);
   }, [filterEntityType, filterAction]);
 
   const loadLogs = async () => {
@@ -115,7 +117,7 @@ export default function AuditLogsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredLogs.map((log) => (
+              {paginatedLogs.map((log) => (
                 <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="py-3 px-4 text-slate-600">
                     {new Date(log.createdAt).toLocaleString()}
@@ -150,6 +152,16 @@ export default function AuditLogsPage() {
             <div className="py-12 text-center text-slate-500">No audit logs found</div>
           )}
         </div>
+        {filteredLogs.length > 0 && (
+          <TablePagination
+            currentPage={page}
+            totalItems={filteredLogs.length}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            itemLabel="logs"
+          />
+        )}
       </div>
 
       {/* Detail Modal */}

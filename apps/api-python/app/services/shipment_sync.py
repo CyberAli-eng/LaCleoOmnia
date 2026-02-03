@@ -54,12 +54,35 @@ def _user_id_for_shipment(db: Any, shipment: Shipment) -> Optional[str]:
     return acc.user_id if acc else None
 
 
+def _get_selloship_credentials(db: Any, user_id: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Return (api_key, username, password) for Selloship from ProviderCredential or env."""
+    from app.models import ProviderCredential
+    from app.services.credentials import decrypt_token
+
+    cred = db.query(ProviderCredential).filter(
+        ProviderCredential.user_id == user_id,
+        ProviderCredential.provider_id == "selloship",
+    ).first()
+    if cred and cred.value_encrypted:
+        try:
+            dec = decrypt_token(cred.value_encrypted)
+            data = json.loads(dec) if isinstance(dec, str) and dec.strip().startswith("{") else {"apiKey": dec}
+            api_key = data.get("apiKey") or data.get("api_key")
+            username = data.get("username")
+            password = data.get("password")
+            if api_key or (username and password):
+                return (api_key, username, password)
+        except Exception:
+            pass
+    key = (getattr(settings, "SELLOSHIP_API_KEY", None) or "").strip() or None
+    user = (getattr(settings, "SELLOSHIP_USERNAME", None) or "").strip() or None
+    pwd = (getattr(settings, "SELLOSHIP_PASSWORD", None) or "").strip() or None
+    return (key, user, pwd) if (key or (user and pwd)) else (None, None, None)
+
+
 async def sync_shipments(db: Any, user_id: Optional[str] = None) -> dict:
     """
-    Single loop: sync all active shipments (any courier). For each shipment:
-    - Resolve user_id (from order->channel_account, or use passed user_id for manual sync).
-    - Get API key for (user_id, courier_name).
-    - Call Delhivery or Selloship get_tracking; update DB; recompute profit.
+    Sync all active shipments. Delhivery: one get_tracking per shipment. Selloship: batch GET /waybillDetails (max 50 per call per Base.com spec).
     Returns { synced: int, errors: list }.
     """
     from app.services.delhivery_service import get_client as get_delhivery_client
@@ -80,26 +103,30 @@ async def sync_shipments(db: Any, user_id: Optional[str] = None) -> dict:
     shipments_list = query.all()
     synced = 0
     errors: list[str] = []
+
+    # Split Delhivery vs Selloship; for Selloship group by user_id for batch
+    delhivery_shipments = []
+    selloship_by_user: dict[str, list] = {}
     for s in shipments_list:
         awb = (s.awb_number or "").strip()
         if not awb:
             continue
-        uid = user_id or _user_id_for_shipment(db, s)
         courier_raw = (s.courier_name or "").strip().lower()
-        is_delhivery = "delhivery" in courier_raw
-        is_selloship = "selloship" in courier_raw
-        if not is_delhivery and not is_selloship:
-            continue
+        if "delhivery" in courier_raw:
+            delhivery_shipments.append(s)
+        elif "selloship" in courier_raw:
+            uid = user_id or _user_id_for_shipment(db, s) or ""
+            selloship_by_user.setdefault(uid, []).append(s)
+    # Delhivery: one-by-one
+    for s in delhivery_shipments:
+        awb = (s.awb_number or "").strip()
+        uid = user_id or _user_id_for_shipment(db, s)
         api_key = _get_courier_api_key(db, uid or "", s.courier_name or "")
         if not api_key:
             continue
         try:
-            if is_delhivery:
-                client = get_delhivery_client(api_key)
-                result = await client.get_tracking(awb)
-            else:
-                client = get_selloship_client(api_key)
-                result = await client.get_tracking(awb)
+            client = get_delhivery_client(api_key)
+            result = await client.get_tracking(awb)
             raw_status = result.get("raw_status") or result.get("status")
             internal_status = result.get("status")
             if isinstance(internal_status, ShipmentStatus):
@@ -115,11 +142,6 @@ async def sync_shipments(db: Any, user_id: Optional[str] = None) -> dict:
             except (ValueError, TypeError):
                 pass
             s.last_synced_at = datetime.now(timezone.utc)
-            if is_selloship and hasattr(client, "get_shipping_cost"):
-                cost = await client.get_shipping_cost(awb)
-                if cost:
-                    s.forward_cost = cost.get("forward_cost") or s.forward_cost
-                    s.reverse_cost = cost.get("reverse_cost") or s.reverse_cost
             tracking = db.query(ShipmentTracking).filter(ShipmentTracking.shipment_id == s.id).first()
             if tracking:
                 tracking.status = raw_status or internal_status
@@ -140,8 +162,65 @@ async def sync_shipments(db: Any, user_id: Optional[str] = None) -> dict:
             compute_profit_for_order(db, s.order_id)
             synced += 1
         except Exception as e:
-            logger.warning("Sync shipment %s (%s) failed: %s", awb, s.courier_name, e)
+            logger.warning("Sync shipment %s (Delhivery) failed: %s", awb, e)
             errors.append(f"{awb}: {e}")
+
+    # Selloship: batch GET /waybillDetails (max 50 per call)
+    for uid, selloship_list in selloship_by_user.items():
+        api_key, username, password = _get_selloship_credentials(db, uid)
+        if not api_key and not (username and password):
+            continue
+        client = get_selloship_client(api_key=api_key, username=username, password=password)
+        awb_list = [s.awb_number.strip() for s in selloship_list]
+        for i in range(0, len(awb_list), 50):
+            chunk_awbs = awb_list[i : i + 50]
+            chunk_shipments = [s for s in selloship_list if (s.awb_number or "").strip() in chunk_awbs]
+            try:
+                results = await client.get_waybill_details_batch(chunk_awbs)
+            except Exception as e:
+                errors.append(f"Selloship batch: {e}")
+                continue
+            by_awb = {r.get("waybill", "").strip(): r for r in results if r.get("waybill")}
+            for s in chunk_shipments:
+                awb = (s.awb_number or "").strip()
+                r = by_awb.get(awb)
+                if not r:
+                    continue
+                raw_status = r.get("raw_status") or r.get("status")
+                internal_status = r.get("status")
+                if r.get("error") and not internal_status:
+                    errors.append(f"{awb}: {r.get('error')}")
+                    continue
+                try:
+                    s.status = ShipmentStatus(internal_status) if internal_status in [e.value for e in ShipmentStatus] else s.status
+                except (ValueError, TypeError):
+                    pass
+                s.last_synced_at = datetime.now(timezone.utc)
+                if hasattr(client, "get_shipping_cost"):
+                    cost = await client.get_shipping_cost(awb)
+                    if cost:
+                        s.forward_cost = cost.get("forward_cost") or s.forward_cost
+                        s.reverse_cost = cost.get("reverse_cost") or s.reverse_cost
+                payload = r.get("raw_response")
+                tracking = db.query(ShipmentTracking).filter(ShipmentTracking.shipment_id == s.id).first()
+                if tracking:
+                    tracking.status = raw_status or internal_status
+                    tracking.delivery_status = r.get("delivery_status")
+                    tracking.rto_status = r.get("rto_status")
+                    tracking.raw_response = payload
+                else:
+                    tracking = ShipmentTracking(
+                        shipment_id=s.id,
+                        waybill=awb,
+                        status=raw_status or internal_status,
+                        delivery_status=r.get("delivery_status"),
+                        rto_status=r.get("rto_status"),
+                        raw_response=payload,
+                    )
+                    db.add(tracking)
+                db.flush()
+                compute_profit_for_order(db, s.order_id)
+                synced += 1
     try:
         db.commit()
     except Exception as e:

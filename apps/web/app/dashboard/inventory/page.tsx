@@ -45,9 +45,9 @@ export default function InventoryPage() {
   const [shopifyInventoryWarning, setShopifyInventoryWarning] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10);
   const [pageShopify, setPageShopify] = useState(1);
-  const [pageSizeShopify, setPageSizeShopify] = useState(25);
+  const [pageSizeShopify, setPageSizeShopify] = useState(10);
 
   useEffect(() => {
     loadData();

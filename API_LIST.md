@@ -118,6 +118,7 @@ Fixture data is defined in **`apps/api-python/app/mock_data.py`**. You can edit 
 | GET | `/api/shipments` | List shipments (Auth required). | — |
 | GET | `/api/shipments/order/{order_id}` | Get shipment for order (Auth required). | — |
 | POST | `/api/shipments` | Create shipment (order_id, awb_number, courier_name, forward_cost, reverse_cost, etc.) (Auth required). | — |
+| POST | `/api/shipments/generate-label` | Generate Selloship waybill and label PDF URL for an order (body: order_id, courier_name: "selloship"). Returns waybill, shippingLabel, courierName (Auth required). | Labels flow |
 | POST | `/api/shipments/sync` | Sync Delhivery + Selloship status/costs (Auth required). | Integrations (Sync shipments action) |
 | GET | `/api/shipments/{shipment_id}` | Get shipment by id (Auth required). | — |
 

@@ -63,6 +63,12 @@ logger.info(f"🌐 Production: {settings.IS_PRODUCTION}")
 logger.info(f"☁️  Cloud: {settings.IS_CLOUD}")
 logger.info(f"🔗 Host: {settings.HOST}:{settings.PORT}")
 
+# Startup config validation (warn only)
+if settings.IS_PRODUCTION and getattr(settings, "JWT_SECRET", "").strip() in ("", "supersecret_fallback_key_change_in_production"):
+    logger.warning("⚠️ JWT_SECRET is default or empty in production. Set a strong JWT_SECRET in environment.")
+if not (getattr(settings, "DATABASE_URL", "") or "").strip():
+    logger.warning("⚠️ DATABASE_URL is not set. Database operations will fail.")
+
 def get_cors_headers(request: Request) -> dict:
     """Get CORS headers for a request"""
     origin = request.headers.get("origin", "")
@@ -180,13 +186,23 @@ app.include_router(profit.router, prefix="/api/profit", tags=["profit"])
 
 @app.get("/health")
 async def health():
-    """Health check endpoint"""
+    """Health check endpoint. Includes DB connectivity check."""
+    db_status = "ok"
+    try:
+        from app.database import engine
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as e:
+        logger.warning("Health check DB ping failed: %s", e)
+        db_status = "error"
     return {
-        "status": "ok",
+        "status": "ok" if db_status == "ok" else "degraded",
         "service": "api",
+        "db": db_status,
         "environment": settings.ENV,
         "production": settings.IS_PRODUCTION,
-        "cloud": settings.IS_CLOUD
+        "cloud": settings.IS_CLOUD,
     }
 
 

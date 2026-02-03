@@ -50,9 +50,9 @@ export default function OrdersPage() {
   const [bulkAction, setBulkAction] = useState<string>("");
   const [processing, setProcessing] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10);
   const [pageShopify, setPageShopify] = useState(1);
-  const [pageSizeShopify, setPageSizeShopify] = useState(25);
+  const [pageSizeShopify, setPageSizeShopify] = useState(10);
 
   useEffect(() => {
     loadOrders();

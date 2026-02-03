@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { authFetch, API_BASE_URL, getAuthHeaders } from "@/utils/api";
 import { formatCurrency } from "@/utils/currency";
+import { TablePagination } from "@/app/components/TablePagination";
 
 interface SkuCostRow {
   id: string;
@@ -32,6 +33,8 @@ export default function CostsPage() {
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ created: number; updated: number; errors: string[] } | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const loadList = async () => {
     setLoading(true);
@@ -49,7 +52,12 @@ export default function CostsPage() {
 
   useEffect(() => {
     loadList();
+    setPage(1);
   }, [search]);
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   const resetForm = () => {
     setForm({
@@ -316,7 +324,7 @@ export default function CostsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {rows.map((row) => (
+                {paginatedRows.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50">
                     <td className="px-4 py-2 text-sm font-medium text-slate-900">{row.sku}</td>
                     <td className="px-4 py-2 text-sm text-right text-slate-700">{formatCurrency(Number(row.product_cost))}</td>
@@ -332,6 +340,16 @@ export default function CostsPage() {
               </tbody>
             </table>
           </div>
+        )}
+        {rows.length > 0 && (
+          <TablePagination
+            currentPage={page}
+            totalItems={rows.length}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            itemLabel="rows"
+          />
         )}
       </div>
     </div>

@@ -41,7 +41,8 @@
 - `LOG_LEVEL` - Logging level (default: `INFO` for prod, `DEBUG` for dev)
 - `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_SCOPES` - Optional; used when user has not set credentials in UI
 - `DELHIVERY_API_KEY`, `DELHIVERY_TRACKING_BASE_URL` - Optional; for unified shipment sync (Delhivery)
-- `SELLOSHIP_API_KEY`, `SELLOSHIP_API_BASE_URL` - Optional; for unified shipment sync (Selloship)
+- `SELLOSHIP_API_KEY`, `SELLOSHIP_API_BASE_URL` - Optional; for unified shipment sync (Selloship). If using token-based auth per Base.com Shipper Integration, also set `SELLOSHIP_USERNAME` and `SELLOSHIP_PASSWORD` (POST /authToken used to obtain Bearer token).
+- `SELLOSHIP_USERNAME`, `SELLOSHIP_PASSWORD` - Optional; for Selloship when using Base.com Shipper Integration auth (POST /authToken). When set, token is used in Authorization header for /waybillDetails.
 - `SHIPMENT_POLL_INTERVAL_SEC`, `SHIPMENT_POLL_FIRST_DELAY_SEC` - Optional; default 1800 (30 min), 120 (first run delay)
 - `MOCK_DATA` - Optional; set to `true`, `1`, or `yes` to enable mock API (fixture data for orders, inventory, analytics, etc.; no DB required). See `API_LIST.md` in repo root.
 

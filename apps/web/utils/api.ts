@@ -42,48 +42,75 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
     }
 }
 
+const RETRY_MAX = 2;
+const RETRY_DELAY_MS = 1000;
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function fetchFromApi(path: string, init?: RequestInit) {
     const url = `${API_BASE_URL}${path}`;
-    
-    try {
-        const res = await fetch(url, {
-            cache: 'no-store',
-            ...init,
-        });
+    let lastError: Error | null = null;
 
-        const text = await res.text();
-        if (!res.ok) {
-            let msg = text || `Request failed with status ${res.status}`;
-            try {
-                const data = JSON.parse(text);
-                const d = data?.detail ?? data?.error ?? data?.message;
-                if (d != null) msg = typeof d === 'string' ? d : JSON.stringify(d);
-            } catch {
-                /* use msg as-is */
-            }
-            throw new Error(msg);
-        }
-        if (!text || text.trim() === '') return {};
+    for (let attempt = 0; attempt <= RETRY_MAX; attempt++) {
         try {
-            return JSON.parse(text);
-        } catch {
-            throw new Error('Invalid JSON response');
-        }
-    } catch (error: any) {
-        // Provide more helpful error messages
-        if (error instanceof TypeError && error.message.includes('fetch')) {
-            const apiUrl = API_BASE_URL;
-            if (apiUrl.includes('127.0.0.1') || apiUrl.includes('localhost')) {
+            const res = await fetch(url, {
+                cache: 'no-store',
+                ...init,
+            });
+
+            const text = await res.text();
+            if (!res.ok) {
+                let msg = text || `Request failed with status ${res.status}`;
+                try {
+                    const data = JSON.parse(text);
+                    const d = data?.detail ?? data?.error ?? data?.message;
+                    if (d != null) msg = typeof d === 'string' ? d : JSON.stringify(d);
+                } catch {
+                    /* use msg as-is */
+                }
+                const err = new Error(msg);
+                // Retry on 5xx only (not 4xx)
+                if (attempt < RETRY_MAX && res.status >= 500) {
+                    lastError = err;
+                    await delay(RETRY_DELAY_MS);
+                    continue;
+                }
+                throw err;
+            }
+            if (!text || text.trim() === '') return {};
+            try {
+                return JSON.parse(text);
+            } catch {
+                throw new Error('Invalid JSON response');
+            }
+        } catch (error: unknown) {
+            const isNetwork =
+                error instanceof TypeError && (error.message?.includes('fetch') || error.message?.includes('Failed to fetch'));
+            const isRetriable = isNetwork;
+            if (attempt < RETRY_MAX && isRetriable) {
+                lastError = error instanceof Error ? error : new Error(String(error));
+                await delay(RETRY_DELAY_MS);
+                continue;
+            }
+            if (error instanceof TypeError && (error as Error).message?.includes('fetch')) {
+                const apiUrl = API_BASE_URL;
+                if (apiUrl.includes('127.0.0.1') || apiUrl.includes('localhost')) {
+                    throw new Error(
+                        'Cannot connect to API. ' +
+                        'Please set NEXT_PUBLIC_API_URL in Vercel environment variables. ' +
+                        `Current API URL: ${apiUrl}`
+                    );
+                }
                 throw new Error(
-                    'Cannot connect to API. ' +
-                    'Please set NEXT_PUBLIC_API_URL in Vercel environment variables. ' +
-                    `Current API URL: ${apiUrl}`
+                    `Network error: Unable to reach API at ${apiUrl}. ${(error as Error).message}`
                 );
             }
-            throw new Error(`Network error: Unable to reach API at ${apiUrl}. ${error.message}`);
+            throw error;
         }
-        throw error;
     }
+    throw lastError ?? new Error('Request failed after retries');
 }
 
 export function getAuthHeaders(): Record<string, string> {

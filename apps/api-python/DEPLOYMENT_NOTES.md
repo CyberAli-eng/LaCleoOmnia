@@ -100,18 +100,25 @@ If you get 500/502 on inventory: check scopes (`read_products`, `read_inventory`
 
 - **Shopify**: Users add **API Key** and **API Secret** in Integrations → Shopify App setup (no .env required). Create an app in Shopify Admin → Apps → Develop apps; set App URL and Redirect URL (e.g. `https://yourapi.com/auth/shopify/callback`); copy Client credentials. Request scopes matching `SHOPIFY_SCOPES` in .env (e.g. `read_orders`, `write_orders`, `read_products`, `write_products`, `read_inventory`, `write_inventory`, `read_locations`). Then click Connect → OAuth.
 - **Delhivery**: Users paste **API key** in Integrations → Logistics → Delhivery; status shows **Connected**. No .env required. Optional: set `DELHIVERY_API_KEY` in .env for background sync.
-- **Selloship**: Users paste **API key** in Integrations → Logistics → Selloship; status shows **Connected**. No .env required. Optional: set `SELLOSHIP_API_KEY` and `SELLOSHIP_API_BASE_URL` in .env for background sync.
+- **Selloship**: Users paste **API key** in Integrations → Logistics → Selloship; status shows **Connected**. No .env required. Optional: set `SELLOSHIP_API_KEY` and `SELLOSHIP_API_BASE_URL` in .env for background sync. For Base.com Shipper Integration token auth, set `SELLOSHIP_USERNAME` and `SELLOSHIP_PASSWORD` (POST /authToken).
 - **Marketing (Meta Ads / Google Ads)**: Users add credentials in Integrations → Marketing Channels for blended CAC (ad spend → profit).
 - **.env fallback**: `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `DELHIVERY_API_KEY`, `SELLOSHIP_API_KEY` in .env are optional; if set, they are used when the user has not saved credentials in the UI.
 
 ## Delhivery + Selloship (unified courier sync & RTO profit)
 
-- **Config**: Users paste API keys in Integrations → Logistics (Delhivery, Selloship). Optional env: `DELHIVERY_API_KEY`, `DELHIVERY_TRACKING_BASE_URL` (default `https://track.delhivery.com`); `SELLOSHIP_API_KEY`, `SELLOSHIP_API_BASE_URL` (default `https://api.selloship.com`).
-- **Tracking**: Single unified loop. Delhivery: `GET https://track.delhivery.com/api/v1/packages/json/?waybill=XXXX` with `Authorization: Token <API_KEY>`. Selloship: service calls Selloship API (endpoint configurable). Status is mapped to internal: DELIVERED, RTO_DONE, RTO_INITIATED, IN_TRANSIT, LOST (never raw strings in DB).
+- **Config**: Users paste API keys in Integrations → Logistics (Delhivery, Selloship). Optional env: `DELHIVERY_API_KEY`, `DELHIVERY_TRACKING_BASE_URL` (default `https://track.delhivery.com`); `SELLOSHIP_API_KEY`, `SELLOSHIP_API_BASE_URL` (default `https://api.selloship.com`); for Selloship token auth: `SELLOSHIP_USERNAME`, `SELLOSHIP_PASSWORD`.
+- **Tracking**: Single unified loop. Delhivery: `GET .../api/v1/packages/json/?waybill=XXXX` with `Authorization: Token <API_KEY>`. Selloship (aligned with Base.com Shipper Integration): auth via `POST /authToken` (username/password) or Bearer API key; status via `GET /waybillDetails?waybills=AWB1,AWB2` (max 50 per call); response fields `waybill`, `currentStatus`, `statusDate`, `current_location`. Status is mapped to internal: DELIVERED, RTO_DONE, RTO_INITIATED, IN_TRANSIT, LOST (never raw strings in DB).
 - **Shipments**: Table has `courier_name` (`delhivery` | `selloship`), `forward_cost`, `reverse_cost`, `last_synced_at`; status enum includes RTO_INITIATED, RTO_DONE, IN_TRANSIT, LOST.
 - **Order profit**: Fields `shipping_forward`, `shipping_reverse`, `rto_loss`, `lost_loss`, `courier_status`, `final_status`. Rules: Delivered = revenue - all costs; RTO = loss (product+packaging+forward+reverse+marketing); Lost = product+packaging+forward; Cancelled (pre-ship) = marketing+payment.
 - **Sync**: **Unified 30-min background poll** (all active shipments; for each shipment, courier is chosen by `courier_name`, API key from ProviderCredential or env). Env: `SHIPMENT_POLL_INTERVAL_SEC` (default 1800), `SHIPMENT_POLL_FIRST_DELAY_SEC` (default 120). Manual: **Sync shipments** in Integrations or `POST /api/shipments/sync` (with JWT) — syncs current user’s Delhivery + Selloship shipments.
-- **APIs**: `GET /api/shipments`, `GET /api/shipments/order/{order_id}`, `POST /api/shipments` (create with order_id, awb_number, courier_name, forward_cost, reverse_cost), `POST /api/shipments/sync`, `GET /api/shipments/{id}`.
+- **APIs**: `GET /api/shipments`, `GET /api/shipments/order/{order_id}`, `POST /api/shipments` (create with order_id, awb_number, courier_name, forward_cost, reverse_cost), `POST /api/shipments/generate-label` (Selloship waybill + label URL), `POST /api/shipments/sync`, `GET /api/shipments/{id}`.
+
+## Robustness
+
+- **Health**: `GET /health` returns `status`, `db` (ok/error), and environment info. Use for load balancers and monitoring.
+- **HTTP clients**: External calls (Selloship, Delhivery) use shared timeouts (15–30s) and retries (GET only, 2 retries with backoff) to reduce failures from transient errors.
+- **Startup**: On boot, the API logs a warning if `JWT_SECRET` or `DATABASE_URL` is missing or default in production.
+- **Errors**: 500 responses do not expose stack traces or internal messages in production; CORS headers are always attached to error responses.
 
 ## Database Setup
 

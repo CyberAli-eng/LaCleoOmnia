@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { authFetch } from "@/utils/api";
+import { TablePagination } from "@/app/components/TablePagination";
 
 interface WebhookEvent {
   id: string;
@@ -34,10 +35,15 @@ export default function WebhooksPage() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterSource, setFilterSource] = useState<string>("all");
   const [registering, setRegistering] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     loadData();
   }, []);
+  useEffect(() => {
+    setPage(1);
+  }, [filterStatus, filterSource]);
 
   const loadData = async () => {
     try {
@@ -212,7 +218,7 @@ export default function WebhooksPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredEvents.map((event) => (
+              {paginatedEvents.map((event) => (
                 <tr key={event.id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="py-3 px-4">
                     <span className="font-medium text-slate-900 capitalize">{event.source}</span>
