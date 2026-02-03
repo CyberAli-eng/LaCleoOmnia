@@ -104,6 +104,10 @@ export default function WebhooksPage() {
     const matchesSource = filterSource === "all" || event.source === filterSource;
     return matchesStatus && matchesSource;
   });
+  const paginatedEvents = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredEvents.slice(start, start + pageSize);
+  }, [filteredEvents, page, pageSize]);
 
   const successCount = events.filter((e) => e.status === "success").length;
   const failedCount = events.filter((e) => e.status === "failed").length;
