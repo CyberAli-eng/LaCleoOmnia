@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { authFetch } from "@/utils/api";
 import Link from "next/link";
+import { GuideDrawer, type GuideStep } from "@/app/components/GuideDrawer";
 
 interface ActionDef {
   id: string;
@@ -37,6 +38,7 @@ interface Provider {
   setupConnectEndpoint?: string;
   setupFormFields?: ConnectFormField[];
   setupGuide?: string;
+  setupSteps?: GuideStep[];
   actions?: ActionDef[];
   description?: string;
 }
@@ -106,6 +108,7 @@ function IntegrationsPageContent() {
   const [showConnectForm, setShowConnectForm] = useState<string | null>(null);
   const [showSetupForm, setShowSetupForm] = useState<string | null>(null);
   const [connectFormData, setConnectFormData] = useState<Record<string, string>>({});
+  const [guideProvider, setGuideProvider] = useState<Provider | null>(null);
 
   useEffect(() => {
     loadCatalog();
@@ -346,7 +349,19 @@ function IntegrationsPageContent() {
                     <div className="flex items-center gap-3">
                       <div className="text-3xl">{provider.icon}</div>
                       <div>
-                        <h3 className="text-lg font-semibold text-slate-900">{provider.name}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-lg font-semibold text-slate-900">{provider.name}</h3>
+                          {(provider.setupSteps?.length || provider.setupGuide) && (
+                            <button
+                              type="button"
+                              onClick={() => setGuideProvider(provider)}
+                              className="rounded-lg px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 border border-blue-200"
+                              title="How to configure this integration"
+                            >
+                              Guide
+                            </button>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 mt-1">
                           {isConnected ? (
                             <>
@@ -555,6 +570,14 @@ function IntegrationsPageContent() {
           </div>
         </section>
       ))}
+
+      <GuideDrawer
+        open={!!guideProvider}
+        onClose={() => setGuideProvider(null)}
+        title={guideProvider ? `How to integrate ${guideProvider.name}` : ""}
+        steps={guideProvider?.setupSteps}
+        fallbackText={guideProvider?.setupGuide}
+      />
     </div>
   );
 }

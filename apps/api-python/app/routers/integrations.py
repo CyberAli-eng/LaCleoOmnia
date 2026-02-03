@@ -73,7 +73,14 @@ def _get_integration_catalog() -> dict:
                             {"key": "apiKey", "label": "API Key (Client ID)", "type": "text", "placeholder": "From Shopify Partner app"},
                             {"key": "apiSecret", "label": "API Secret (Client secret)", "type": "password", "placeholder": "From Shopify Partner app"}
                         ],
-                        "setupGuide": f"Create an app in Shopify Admin → Apps → Develop apps → Create an app. In Configuration set App URL and Redirect app_url is (https://lacleoomnia.onrender.com) redirect_uri is (https://lacleoomnia.onrender.com/auth/shopify/callback)  Under Client credentials copy API key and API secret. Request these scopes: read_orders, write_orders, read_products, write_products, read_inventory, write_inventory, read_locations (or match SHOPIFY_SCOPES in .env).",
+                        "setupGuide": "Create an app in Shopify Admin: Apps → Develop apps → Create an app. In Configuration set App URL to your app base URL (e.g. the URL where this dashboard is hosted). Set Redirect URI to: your_app_url/auth/shopify/callback. Under Client credentials copy API key and API secret. Request scopes: read_orders, write_orders, read_products, write_products, read_inventory, write_inventory, read_locations.",
+                        "setupSteps": [
+                            {"step": 1, "title": "Create a Shopify app", "description": "In your Shopify Admin go to Apps → Develop apps → Create an app (or use an existing custom app)."},
+                            {"step": 2, "title": "Configure App URL", "description": "In Configuration set the App URL to the base URL where this dashboard is hosted (e.g. https://your-domain.com). Do not include a trailing slash."},
+                            {"step": 3, "title": "Set Redirect URI", "description": "Set Redirect URI to: your_app_url/auth/shopify/callback (e.g. https://your-domain.com/auth/shopify/callback)."},
+                            {"step": 4, "title": "Copy credentials", "description": "Under Client credentials copy the API key (Client ID) and API secret (Client secret). Paste them in the form below on this page."},
+                            {"step": 5, "title": "Request scopes", "description": "Ensure your app requests at least: read_orders, write_orders, read_products, write_products, read_inventory, write_inventory, read_locations. Then click Connect via OAuth and enter your store name (e.g. mystore for mystore.myshopify.com)."},
+                        ],
                         "actions": [
                             {"id": "sync", "label": "Sync Shopify", "method": "POST", "endpoint": "/integrations/shopify/sync", "primary": True},
                             {"id": "registerWebhooks", "label": "Register webhooks", "method": "POST", "endpoint": "/integrations/shopify/register-webhooks"},
@@ -372,15 +379,90 @@ async def trigger_ad_spend_sync(
     }
 
 
-def _get_shopify_integration(db: Session):
-    """Get first Shopify integration (one shop for MVP). Raises 401 if no token."""
-    integration = db.query(ShopifyIntegration).first()
-    if not integration or not integration.access_token:
+def _get_user_shopify_account(db: Session, user_id: str):
+    """Get current user's first Shopify ChannelAccount. Returns None if not connected."""
+    channel = db.query(Channel).filter(Channel.name == ChannelType.SHOPIFY).first()
+    if not channel:
+        return None
+    return (
+        db.query(ChannelAccount)
+        .filter(
+            ChannelAccount.channel_id == channel.id,
+            ChannelAccount.user_id == user_id,
+            ChannelAccount.shop_domain.isnot(None),
+        )
+        .first()
+    )
+
+
+def _get_user_shopify_context(db: Session, current_user: User):
+    """
+    Resolve Shopify shop and token for the current user only (per-user dashboard).
+    Returns (shop_domain, access_token, app_secret, integration_row for last_synced_at) or raises 401.
+    """
+    account = _get_user_shopify_account(db, str(current_user.id))
+    if not account or not account.access_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Shopify not connected. Connect via OAuth first.",
         )
-    return integration
+    try:
+        dec = decrypt_token(account.access_token or "")
+        # Stored as raw token string or JSON with accessToken
+        if isinstance(dec, str) and dec.strip().startswith("{"):
+            data = json.loads(dec)
+            access_token = (data.get("accessToken") or data.get("access_token") or "").strip()
+        else:
+            access_token = (dec or "").strip()
+    except Exception:
+        access_token = ""
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Shopify not connected. Connect via OAuth first.",
+        )
+    shop_domain = (account.shop_domain or "").strip()
+    if not shop_domain:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Shopify shop domain missing. Reconnect your store.",
+        )
+    # App secret: user's ProviderCredential (shopify_app) or ShopifyIntegration for this shop
+    app_secret = ""
+    app_creds = _get_shopify_app_credentials(db, str(current_user.id))
+    if app_creds and app_creds.get("apiSecret"):
+        app_secret = app_creds["apiSecret"]
+    if not app_secret:
+        integration = db.query(ShopifyIntegration).filter(
+            ShopifyIntegration.shop_domain == shop_domain
+        ).first()
+        if integration and getattr(integration, "app_secret_encrypted", None):
+            try:
+                app_secret = decrypt_token(integration.app_secret_encrypted) or ""
+            except Exception:
+                pass
+    integration_row = (
+        db.query(ShopifyIntegration).filter(ShopifyIntegration.shop_domain == shop_domain).first()
+    )
+    return shop_domain, access_token, app_secret, integration_row
+
+
+def _get_shopify_integration(db: Session, current_user: User):
+    """Get Shopify context for the current user only. Returns an object with shop_domain, access_token, app_secret, and optional integration row for last_synced_at."""
+    shop_domain, access_token, app_secret, integration_row = _get_user_shopify_context(
+        db, current_user
+    )
+    # Return a simple object so existing code using integration.shop_domain, .access_token still works
+    class UserShopifyContext:
+        def __init__(self):
+            self.shop_domain = shop_domain
+            self.access_token = access_token
+            self.app_secret_encrypted = None  # not used when we pass decrypted secret
+            self.last_synced_at = getattr(integration_row, "last_synced_at", None) if integration_row else None
+            self._integration_row = integration_row  # for updating last_synced_at on sync
+    ctx = UserShopifyContext()
+    ctx._app_secret = app_secret
+    return ctx
 
 
 def _normalize_scopes_for_inventory(scopes_list: list[str]) -> bool:
@@ -396,30 +478,24 @@ async def shopify_register_webhooks(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Register Shopify webhooks for the connected shop (orders/create, orders/updated,
+    Register Shopify webhooks for the current user's connected shop (orders/create, orders/updated,
     orders/cancelled, refunds/create, inventory_levels/update, products/update).
-    Requires WEBHOOK_BASE_URL and SHOPIFY_API_SECRET. Call after OAuth or when webhooks show 0.
+    Requires WEBHOOK_BASE_URL. App secret from Integrations (Shopify App setup) or env.
     """
-    integration = _get_shopify_integration(db)
+    integration = _get_shopify_integration(db, current_user)
     webhook_base_url = (getattr(settings, "WEBHOOK_BASE_URL", None) or "").strip().rstrip("/")
     if not webhook_base_url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="WEBHOOK_BASE_URL is not set. Set it to your API base URL (e.g. https://yourapp.onrender.com).",
+            detail="WEBHOOK_BASE_URL is not set. Set it to your API base URL (e.g. https://yourapp.onrender.com), or ask your administrator to configure it.",
         )
-    # Prefer app secret stored with integration (from user's Shopify App setup); fallback to env
-    secret = ""
-    if getattr(integration, "app_secret_encrypted", None):
-        try:
-            secret = decrypt_token(integration.app_secret_encrypted) or ""
-        except Exception:
-            pass
+    secret = getattr(integration, "_app_secret", None) or ""
     if not secret:
         secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
     if not secret:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Shopify App Secret is required. Add your Shopify App credentials in Integrations (Shopify App setup), or set SHOPIFY_API_SECRET in .env.",
+            detail="Shopify App Secret is required. Add your Shopify App credentials in Integrations (Shopify App setup), or ask your administrator to set SHOPIFY_API_SECRET.",
         )
     try:
         service = ShopifyService()
@@ -450,23 +526,25 @@ async def shopify_status(
 ):
     """
     GET /api/integrations/shopify/status
-    Uses live scopes from Shopify when possible so status reflects actual token permissions.
+    Returns the current user's Shopify connection only (per-user dashboard). Uses live scopes when possible.
     """
-    integration = db.query(ShopifyIntegration).first()
-    if not integration or not integration.access_token:
+    try:
+        shop_domain, access_token, _, integration_row = _get_user_shopify_context(db, current_user)
+    except HTTPException:
         return {"connected": False, "shop": None}
     # Prefer live scopes from Shopify (GET /admin/oauth/access_scopes.json)
-    live_scopes = await get_access_scopes(integration.shop_domain, integration.access_token)
+    live_scopes = await get_access_scopes(shop_domain, access_token)
     if live_scopes:
         scopes_list = live_scopes
         has_inventory_scopes = _normalize_scopes_for_inventory(scopes_list)
     else:
-        # Fallback: stored scopes from OAuth callback (comma-separated)
-        scopes_list = [s.strip() for s in (integration.scopes or "").split(",") if s.strip()]
+        # Fallback: stored scopes from ShopifyIntegration for this shop
+        scope_str = (getattr(integration_row, "scopes", None) or "") if integration_row else ""
+        scopes_list = [s.strip() for s in (scope_str or "").split(",") if s.strip()]
         has_inventory_scopes = _normalize_scopes_for_inventory(scopes_list)
     return {
         "connected": True,
-        "shop": integration.shop_domain,
+        "shop": shop_domain,
         "scopes": scopes_list,
         "scopes_ok_for_inventory": has_inventory_scopes,
     }
@@ -479,9 +557,9 @@ async def shopify_orders(
 ):
     """
     GET /api/integrations/shopify/orders
-    Read access_token from DB, call Shopify Admin API 2026-01/orders.json, normalize, return.
+    Read access_token from DB (current user's connection), call Shopify Admin API, return.
     """
-    integration = _get_shopify_integration(db)
+    integration = _get_shopify_integration(db, current_user)
     try:
         orders = await shopify_get_orders(
             integration.shop_domain,
@@ -508,7 +586,7 @@ async def shopify_inventory(
     Always returns 200. On errors returns empty list + optional warning.
     """
     try:
-        integration = _get_shopify_integration(db)
+        integration = _get_shopify_integration(db, current_user)
     except HTTPException:
         raise
     except Exception as e:
@@ -591,11 +669,16 @@ async def shopify_sync_orders(
     current_user: User = Depends(get_current_user),
 ):
     """
-    One-time sync: fetch orders from Shopify, insert into orders table (idempotent by channel_order_id).
-    Updates ShopifyIntegration.last_synced_at. Safe for real data: only inserts new orders.
+    One-time sync: fetch orders from Shopify (current user's shop), insert into orders table.
+    Idempotent by channel_order_id. Safe for real data: only inserts new orders.
     """
-    integration = _get_shopify_integration(db)
-    channel, account = _get_or_create_shopify_channel_account(db, integration, current_user)
+    integration = _get_shopify_integration(db, current_user)
+    channel = db.query(Channel).filter(Channel.name == ChannelType.SHOPIFY).first()
+    if not channel:
+        raise HTTPException(status_code=500, detail="Shopify channel not found.")
+    account = _get_user_shopify_account(db, str(current_user.id))
+    if not account:
+        raise HTTPException(status_code=401, detail="Shopify not connected. Connect via OAuth first.")
     try:
         raw_orders = await get_orders_raw(
             integration.shop_domain,
@@ -613,9 +696,10 @@ async def shopify_sync_orders(
         shopify_id = str(o.get("id") or "")
         if not shopify_id:
             continue
-        # Idempotent: skip if we already have this order
+        # Idempotent: skip if we already have this order for this user's account
         existing = db.query(Order).filter(
             Order.channel_id == channel.id,
+            Order.channel_account_id == account.id,
             Order.channel_order_id == shopify_id,
         ).first()
         if existing:
@@ -659,7 +743,8 @@ async def shopify_sync_orders(
             ))
         inserted += 1
 
-    integration.last_synced_at = datetime.now(timezone.utc)
+    if getattr(integration, "_integration_row", None):
+        integration._integration_row.last_synced_at = datetime.now(timezone.utc)
     db.commit()
     return {"synced": inserted, "total_fetched": len(raw_orders), "message": f"Imported {inserted} new orders."}
 
@@ -695,11 +780,16 @@ async def shopify_sync(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Unified initial sync: fetch orders + inventory from Shopify, save into DB, update last_synced_at.
-    Single source of truth. Idempotent for orders (skip existing); upsert inventory.
+    Unified initial sync: fetch orders + inventory from current user's Shopify shop, save into DB.
+    Idempotent for orders (skip existing); upsert inventory.
     """
-    integration = _get_shopify_integration(db)
-    channel, account = _get_or_create_shopify_channel_account(db, integration, current_user)
+    integration = _get_shopify_integration(db, current_user)
+    channel = db.query(Channel).filter(Channel.name == ChannelType.SHOPIFY).first()
+    if not channel:
+        raise HTTPException(status_code=500, detail="Shopify channel not found.")
+    account = _get_user_shopify_account(db, str(current_user.id))
+    if not account:
+        raise HTTPException(status_code=401, detail="Shopify not connected. Connect via OAuth first.")
 
     # 1) Sync orders
     try:
@@ -737,7 +827,7 @@ async def shopify_sync(
         shopify_id = str(o.get("id") or "")
         if not shopify_id:
             continue
-        if db.query(Order).filter(Order.channel_id == channel.id, Order.channel_order_id == shopify_id).first():
+        if db.query(Order).filter(Order.channel_id == channel.id, Order.channel_account_id == account.id, Order.channel_order_id == shopify_id).first():
             continue
         billing = o.get("billing_address") or {}
         first = (billing.get("first_name") or "").strip()
@@ -797,7 +887,8 @@ async def shopify_sync(
         except Exception as e:
             logger.warning("Profit recompute for order %s failed: %s", oid, e)
 
-    integration.last_synced_at = datetime.now(timezone.utc)
+    if getattr(integration, "_integration_row", None):
+        integration._integration_row.last_synced_at = datetime.now(timezone.utc)
     db.commit()
     message = f"Synced {orders_inserted} new orders and {inventory_synced} inventory records."
     return {

@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { authFetch } from "@/utils/api";
 import { TablePagination } from "@/app/components/TablePagination";
+import { GuideDrawer } from "@/app/components/GuideDrawer";
 
 interface WebhookEvent {
   id: string;
@@ -37,6 +38,7 @@ export default function WebhooksPage() {
   const [registering, setRegistering] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -95,7 +97,12 @@ export default function WebhooksPage() {
       await loadData();
       alert("Webhook retried successfully");
     } catch (err: any) {
-      alert(`Retry failed: ${err.message}`);
+      const msg = err?.message ?? "";
+      if (msg.includes("501") || msg.includes("not supported") || msg.includes("payload is not stored")) {
+        alert("Retry is not supported for stored events (payload not kept). Re-sync orders or inventory from Integrations if needed.");
+      } else {
+        alert(`Retry failed: ${msg}`);
+      }
     }
   };
 
@@ -146,9 +153,26 @@ export default function WebhooksPage() {
 
       {/* Subscriptions */}
       <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-lg font-semibold text-slate-900">Webhook Subscriptions</h2>
-          <span className="text-sm text-slate-500">{activeSubscriptions} active</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setGuideOpen(true)}
+              className="rounded-lg px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 border border-blue-200"
+            >
+              Guide
+            </button>
+            <button
+              type="button"
+              onClick={handleRegisterShopifyWebhooks}
+              disabled={registering}
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {registering ? "Registering…" : "Register Shopify webhooks"}
+            </button>
+          </div>
+          <span className="text-sm text-slate-500 w-full sm:w-auto">{activeSubscriptions} active</span>
         </div>
         <div className="space-y-2">
           {subscriptions.map((sub) => (
@@ -349,6 +373,17 @@ export default function WebhooksPage() {
           </div>
         </div>
       )}
+
+      <GuideDrawer
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        title="How to configure webhooks"
+        steps={[
+          { step: 1, title: "Connect Shopify", description: "Go to Integrations and connect your Shopify store via OAuth (add App API Key & Secret first if needed)." },
+          { step: 2, title: "Register webhooks", description: "Click \"Register Shopify webhooks\" above (or use the same action on the Integrations page). This tells Shopify to send order and inventory events to this app." },
+          { step: 3, title: "Check subscriptions", description: "After registering, you should see active subscriptions above. Events will appear in the table below when Shopify sends them." },
+        ]}
+      />
     </div>
   );
 }

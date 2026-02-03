@@ -3,9 +3,10 @@ Audit log routes
 """
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import Optional
 from app.database import get_db
-from app.models import AuditLog, User, AuditLogAction
+from app.models import AuditLog, User, AuditLogAction, UserRole
 from app.auth import get_current_user
 
 router = APIRouter()
@@ -19,18 +20,23 @@ async def list_audit_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """List audit logs"""
-    query = db.query(AuditLog)
-    
+    """List audit logs. Users see their own logs; admins also see system logs (user_id IS NULL)."""
+    if current_user.role == UserRole.ADMIN:
+        query = db.query(AuditLog).filter(
+            or_(AuditLog.user_id == current_user.id, AuditLog.user_id.is_(None))
+        )
+    else:
+        query = db.query(AuditLog).filter(AuditLog.user_id == current_user.id)
+
     if entity_type:
         query = query.filter(AuditLog.entity_type == entity_type)
-    
+
     if entity_id:
         query = query.filter(AuditLog.entity_id == entity_id)
-    
+
     if action:
         query = query.filter(AuditLog.action == action)
-    
+
     logs = query.order_by(AuditLog.created_at.desc()).limit(limit).all()
     
     return {

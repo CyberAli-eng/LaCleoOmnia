@@ -9,6 +9,7 @@ from datetime import datetime
 from app.database import get_db
 from app.models import Order, OrderItem, OrderStatus, User, FulfillmentStatus, Warehouse, Inventory, InventoryMovement, InventoryMovementType, Channel, ChannelAccount, AuditLog, AuditLogAction, OrderProfit
 from app.auth import get_current_user
+from app.services.warehouse_helper import get_default_warehouse
 from app.schemas import OrderResponse, ShipOrderRequest
 from decimal import Decimal
 
@@ -177,11 +178,13 @@ async def confirm_order(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Confirm order"""
+    """Confirm order (only for orders belonging to the current user)."""
+    account_ids = [ca.id for ca in db.query(ChannelAccount).filter(ChannelAccount.user_id == current_user.id).all()]
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
+    if order.channel_account_id not in account_ids:
+        raise HTTPException(status_code=403, detail="Access denied")
     if order.status not in [OrderStatus.NEW, OrderStatus.HOLD]:
         raise HTTPException(
             status_code=400,
@@ -245,11 +248,13 @@ async def pack_order(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Pack order"""
+    """Pack order (only for orders belonging to the current user)."""
+    account_ids = [ca.id for ca in db.query(ChannelAccount).filter(ChannelAccount.user_id == current_user.id).all()]
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
+    if order.channel_account_id not in account_ids:
+        raise HTTPException(status_code=403, detail="Access denied")
     if order.status != OrderStatus.CONFIRMED:
         raise HTTPException(
             status_code=400,
@@ -292,10 +297,10 @@ async def ship_order(
             status_code=400,
             detail=f"Order must be PACKED to ship. Current status: {order.status.value}"
         )
-    
-    warehouse = db.query(Warehouse).filter(Warehouse.name == "Main Warehouse").first()
+
+    warehouse = get_default_warehouse(db)
     if not warehouse:
-        raise HTTPException(status_code=500, detail="Default warehouse not found")
+        raise HTTPException(status_code=500, detail="No warehouse configured. Create a warehouse or set DEFAULT_WAREHOUSE_NAME / DEFAULT_WAREHOUSE_ID.")
     
     # Update order status
     order.status = OrderStatus.SHIPPED
@@ -371,20 +376,22 @@ async def cancel_order(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Cancel order"""
+    """Cancel order (only for orders belonging to the current user)."""
+    account_ids = [ca.id for ca in db.query(ChannelAccount).filter(ChannelAccount.user_id == current_user.id).all()]
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
+    if order.channel_account_id not in account_ids:
+        raise HTTPException(status_code=403, detail="Access denied")
     if order.status in [OrderStatus.SHIPPED, OrderStatus.DELIVERED]:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot cancel order in {order.status.value} status"
         )
-    
-    warehouse = db.query(Warehouse).filter(Warehouse.name == "Main Warehouse").first()
+
+    warehouse = get_default_warehouse(db)
     if not warehouse:
-        raise HTTPException(status_code=500, detail="Default warehouse not found")
+        raise HTTPException(status_code=500, detail="No warehouse configured. Create a warehouse or set DEFAULT_WAREHOUSE_NAME / DEFAULT_WAREHOUSE_ID.")
     
     # Release reserved inventory
     items = db.query(OrderItem).filter(OrderItem.order_id == order_id).all()

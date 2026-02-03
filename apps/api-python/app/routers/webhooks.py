@@ -22,61 +22,116 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+def _parse_channel_account_creds(account: ChannelAccount, db: Session, user_id: str) -> tuple[str, str, str]:
+    """
+    Parse ChannelAccount access_token (encrypted). Handles both JSON shape
+    {shopDomain, accessToken, appSecret} and raw token string. Returns (shop_domain, access_token, app_secret).
+    """
+    dec = decrypt_token(account.access_token or "")
+    if not dec:
+        raise ValueError("No credentials")
+    if isinstance(dec, str) and dec.strip().startswith("{"):
+        try:
+            creds = json.loads(dec)
+            if isinstance(creds, dict):
+                shop = (creds.get("shopDomain") or creds.get("shop_domain") or "").strip()
+                token = (creds.get("accessToken") or creds.get("access_token") or "").strip()
+                secret = (creds.get("appSecret") or creds.get("apiSecret") or "").strip()
+                if shop and token:
+                    return shop, token, secret
+        except json.JSONDecodeError:
+            pass
+    # Raw token string (e.g. from channels OAuth flow)
+    shop = (account.shop_domain or "").strip()
+    if not shop:
+        raise ValueError("Shop domain missing")
+    token = (dec if isinstance(dec, str) else str(dec)).strip()
+    if not token:
+        raise ValueError("No access token")
+    # App secret: from ProviderCredential (shopify_app) for this user or env
+    from app.models import ProviderCredential
+    secret = ""
+    pc = db.query(ProviderCredential).filter(
+        ProviderCredential.user_id == user_id,
+        ProviderCredential.provider_id == "shopify_app",
+    ).first()
+    if pc and pc.value_encrypted:
+        try:
+            raw = decrypt_token(pc.value_encrypted)
+            if isinstance(raw, str) and raw.strip().startswith("{"):
+                data = json.loads(raw)
+                secret = (data.get("apiSecret") or data.get("appSecret") or "").strip()
+            elif isinstance(raw, str):
+                secret = raw.strip()
+        except Exception:
+            pass
+    if not secret:
+        secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
+    return shop, token, secret
+
+
 @router.post("/register/{integration_id}")
 async def register_webhooks(
-    integration_id: int,
+    integration_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Re-register webhooks for an integration"""
+    """Re-register webhooks for an integration (ChannelAccount id, e.g. UUID). Handles both JSON and raw token creds."""
     account = db.query(ChannelAccount).filter(
         ChannelAccount.id == integration_id,
         ChannelAccount.user_id == current_user.id
     ).first()
-    
+
     if not account:
         raise HTTPException(
             status_code=404,
             detail="Integration not found"
         )
-    
+
+    if account.channel.name.value != "SHOPIFY":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Webhook registration not supported for {account.channel.name.value}"
+        )
+
     try:
-        decrypted_creds = decrypt_token(account.access_token or "")
-        creds = json.loads(decrypted_creds) if isinstance(decrypted_creds, str) else decrypted_creds
-        
-        if account.channel.name.value == "SHOPIFY":
-            service = ShopifyService()
-            shop_domain = creds.get("shopDomain", "")
-            access_token = creds.get("accessToken", "")
-            app_secret = creds.get("appSecret", "")
-            
-            # Register webhooks
-            webhook_base_url = settings.WEBHOOK_BASE_URL
-            if not webhook_base_url:
-                raise HTTPException(
-                    status_code=400,
-                    detail="WEBHOOK_BASE_URL not configured"
-                )
-            
-            # Register inventory and product webhooks
-            await service.ensure_webhook(
-                shop_domain,
-                access_token,
-                app_secret,
-                webhook_base_url
-            )
-            
-            return {"message": "Webhooks registered successfully"}
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Webhook registration not supported for {account.channel.type.value}"
-            )
+        shop_domain, access_token, app_secret = _parse_channel_account_creds(
+            account, db, str(current_user.id)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    webhook_base_url = (getattr(settings, "WEBHOOK_BASE_URL", None) or "").strip().rstrip("/")
+    if not webhook_base_url:
+        raise HTTPException(
+            status_code=400,
+            detail="WEBHOOK_BASE_URL not configured"
+        )
+
+    try:
+        service = ShopifyService()
+        await service.ensure_webhook(
+            shop_domain,
+            access_token,
+            app_secret,
+            webhook_base_url
+        )
+        return {"message": "Webhooks registered successfully"}
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to register webhooks: {str(e)}"
         )
+
+def _get_user_shop_domains(db: Session, user_id: str) -> list[str]:
+    """Return list of shop domains (e.g. Shopify) for this user's channel accounts."""
+    accounts = (
+        db.query(ChannelAccount)
+        .filter(ChannelAccount.user_id == user_id, ChannelAccount.shop_domain.isnot(None))
+        .all()
+    )
+    return [a.shop_domain for a in accounts if a.shop_domain]
+
 
 @router.get("")
 async def get_webhook_events(
@@ -86,13 +141,19 @@ async def get_webhook_events(
     source: Optional[str] = Query(None),
     topic: Optional[str] = Query(None),
 ):
-    """Get persisted webhook events (e.g. Shopify). No per-user filter for MVP."""
-    query = db.query(WebhookEvent).order_by(WebhookEvent.created_at.desc()).limit(limit)
+    """Get persisted webhook events for the current user's connected shops only."""
+    user_shops = _get_user_shop_domains(db, str(current_user.id))
+    query = db.query(WebhookEvent).order_by(WebhookEvent.created_at.desc())
+    # Restrict to events for this user's shop(s); if no shops connected, return empty
+    if user_shops:
+        query = query.filter(WebhookEvent.shop_domain.in_(user_shops))
+    else:
+        query = query.filter(WebhookEvent.id == "")  # no matching rows
     if source:
         query = query.filter(WebhookEvent.source == source)
     if topic:
         query = query.filter(WebhookEvent.topic == topic)
-    rows = query.all()
+    rows = query.limit(limit).all()
     return [
         {
             "id": r.id,
@@ -189,28 +250,55 @@ async def shopify_webhook_receive(
     return {"ok": True}
 
 
+@router.post("/events/{event_id}/retry")
+async def retry_webhook_event(
+    event_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retry a failed webhook event. Event must belong to one of the current user's shops.
+    Note: Full payload is not stored; retry re-processes only if the handler can re-fetch data.
+    For Shopify, failed events are not re-sent by Shopify; consider re-syncing orders/inventory instead.
+    """
+    user_shops = _get_user_shop_domains(db, str(current_user.id))
+    event = db.query(WebhookEvent).filter(WebhookEvent.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if event.shop_domain not in user_shops:
+        raise HTTPException(status_code=403, detail="Access denied")
+    # We do not store full payload; cannot truly re-run process_shopify_webhook without it
+    raise HTTPException(
+        status_code=501,
+        detail="Retry not supported: event payload is not stored. Re-sync orders or inventory from Integrations if needed.",
+    )
+
+
 @router.get("/subscriptions")
 async def get_webhook_subscriptions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get webhook subscriptions for the current user"""
-    # Get subscriptions from channel accounts
-    from app.models import ChannelAccount
+    """Get webhook subscriptions for the current user (from their channel accounts)."""
     accounts = db.query(ChannelAccount).filter(
         ChannelAccount.user_id == current_user.id
     ).all()
-    
+
+    # Build list of shop domains for this user (Shopify accounts) for display
     subscriptions = []
     for account in accounts:
-        # Create a subscription entry for each account
+        # CONNECTED counts as ACTIVE for display; only DISCONNECTED is INACTIVE
+        is_active = account.status.value == "CONNECTED"
+        topic = "orders/create, orders/updated, orders/cancelled, refunds/create, inventory_levels/update, products/update"
+        if getattr(account, "shop_domain", None):
+            topic = f"Shopify ({account.shop_domain}): " + topic
         subscriptions.append({
             "id": account.id,
             "integrationId": account.id,
-            "topic": "inventory_levels/update,products/update,orders/create",
-            "status": "ACTIVE" if account.status.value == "ACTIVE" else "INACTIVE",
+            "topic": topic,
+            "status": "ACTIVE" if is_active else "INACTIVE",
             "lastError": None,
-            "updatedAt": account.updated_at.isoformat() if account.updated_at else None,
+            "updatedAt": (account.updated_at.isoformat() if getattr(account, "updated_at", None) else None)
+            or (account.created_at.isoformat() if getattr(account, "created_at", None) else None),
         })
-    
+
     return subscriptions

@@ -35,7 +35,9 @@
 
 - `HOST` - Server host (auto: `127.0.0.1` for local, `0.0.0.0` for cloud)
 - `PORT` - Server port (default: `8000`)
-- `ALLOWED_ORIGINS` - Comma-separated CORS origins
+- `ALLOWED_ORIGINS` - Comma-separated CORS origins (recommended in production to avoid CORS issues)
+- `DEFAULT_WAREHOUSE_NAME` - Name of default warehouse for order confirm/pack/ship (default: `Main Warehouse`)
+- `DEFAULT_WAREHOUSE_ID` - Optional: warehouse ID to use as default (overrides name if set)
 - `WEBHOOK_BASE_URL` - Base URL for webhooks (e.g. `https://yourapi.onrender.com`)
 - `ENCRYPTION_KEY` - 32-character encryption key (for ProviderCredential, etc.)
 - `LOG_LEVEL` - Logging level (default: `INFO` for prod, `DEBUG` for dev)

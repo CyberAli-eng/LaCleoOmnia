@@ -90,6 +90,10 @@ class Settings:
         # In production, no regex by default - use ALLOWED_ORIGINS only
         return None
     
+    # Default warehouse for order confirm/pack/ship/cancel (name or id)
+    DEFAULT_WAREHOUSE_NAME = os.getenv("DEFAULT_WAREHOUSE_NAME", "Main Warehouse")
+    DEFAULT_WAREHOUSE_ID = os.getenv("DEFAULT_WAREHOUSE_ID", "")  # optional: prefer by id if set
+
     # Webhooks
     WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
     

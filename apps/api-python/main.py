@@ -68,6 +68,8 @@ if settings.IS_PRODUCTION and getattr(settings, "JWT_SECRET", "").strip() in (""
     logger.warning("⚠️ JWT_SECRET is default or empty in production. Set a strong JWT_SECRET in environment.")
 if not (getattr(settings, "DATABASE_URL", "") or "").strip():
     logger.warning("⚠️ DATABASE_URL is not set. Database operations will fail.")
+if settings.IS_PRODUCTION and not (os.getenv("ALLOWED_ORIGINS", "") or "").strip():
+    logger.warning("⚠️ ALLOWED_ORIGINS is not set in production. Set your frontend origin(s) (comma-separated) to avoid CORS issues.")
 
 def get_cors_headers(request: Request) -> dict:
     """Get CORS headers for a request"""

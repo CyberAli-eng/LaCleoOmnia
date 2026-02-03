@@ -124,8 +124,11 @@ async def test_shopify(
     account = None
     
     if account_id:
-        # Test existing connection
-        account = db.query(ChannelAccount).filter(ChannelAccount.id == account_id).first()
+        # Test existing connection (only current user's account)
+        account = db.query(ChannelAccount).filter(
+            ChannelAccount.id == account_id,
+            ChannelAccount.user_id == current_user.id,
+        ).first()
         if not account:
             raise HTTPException(status_code=404, detail="Channel account not found")
     elif shop_domain and access_token:
@@ -188,11 +191,14 @@ async def import_shopify_orders_endpoint(
     account_id = request.get("accountId")
     if not account_id:
         raise HTTPException(status_code=400, detail="accountId is required")
-    
-    account = db.query(ChannelAccount).filter(ChannelAccount.id == account_id).first()
+
+    account = db.query(ChannelAccount).filter(
+        ChannelAccount.id == account_id,
+        ChannelAccount.user_id == current_user.id,
+    ).first()
     if not account:
         raise HTTPException(status_code=404, detail="Channel account not found")
-    
+
     result = await import_shopify_orders(db, account)
     return result
 

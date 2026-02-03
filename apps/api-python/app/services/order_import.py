@@ -9,6 +9,7 @@ from app.models import (
     SyncLog, LogLevel
 )
 from app.services.shopify import ShopifyService
+from app.services.warehouse_helper import get_default_warehouse
 from datetime import datetime
 from decimal import Decimal
 
@@ -29,9 +30,9 @@ async def import_shopify_orders(db: Session, account: ChannelAccount) -> dict:
     
     try:
         # Get default warehouse
-        warehouse = db.query(Warehouse).filter(Warehouse.name == "Main Warehouse").first()
+        warehouse = get_default_warehouse(db)
         if not warehouse:
-            raise Exception("Default warehouse not found. Please run seed script.")
+            raise Exception("No warehouse configured. Create a warehouse or set DEFAULT_WAREHOUSE_NAME / DEFAULT_WAREHOUSE_ID.")
         
         # Fetch orders from Shopify
         shopify_orders = await service.get_orders()
