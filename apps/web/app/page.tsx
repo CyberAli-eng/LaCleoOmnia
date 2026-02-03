@@ -1,6 +1,34 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return (
+    localStorage.getItem("token") ||
+    document.cookie
+      .split(";")
+      .find((c) => c.trim().startsWith("token="))
+      ?.split("=")[1]
+      ?.trim() ||
+    null
+  );
+}
 
 export default function LandingPage() {
+  const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    setToken(getToken());
+  }, [pathname]);
+
+  const isLoggedIn = mounted && !!token;
+
   return (
     <div className="relative isolate overflow-hidden bg-white">
       {/* Hero */}
@@ -21,18 +49,31 @@ export default function LandingPage() {
             Per-order profit updates in real time—RTO, lost shipments, and settlement reconciliation included.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-            <Link
-              href="/register"
-              className="rounded-lg bg-blue-600 px-8 py-4 text-base font-semibold text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all"
-            >
-              Get started
-            </Link>
-            <Link
-              href="/login"
-              className="rounded-lg border-2 border-slate-300 bg-white px-8 py-4 text-base font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
-            >
-              Sign in
-            </Link>
+            {!mounted ? (
+              <div className="h-12 w-32 animate-pulse rounded-lg bg-slate-200" />
+            ) : isLoggedIn ? (
+              <Link
+                href="/dashboard"
+                className="rounded-lg bg-blue-600 px-8 py-4 text-base font-semibold text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all"
+              >
+                Go to Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/register"
+                  className="rounded-lg bg-blue-600 px-8 py-4 text-base font-semibold text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all"
+                >
+                  Get started
+                </Link>
+                <Link
+                  href="/login"
+                  className="rounded-lg border-2 border-slate-300 bg-white px-8 py-4 text-base font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+                >
+                  Sign in
+                </Link>
+              </>
+            )}
           </div>
         </div>
 
@@ -94,14 +135,25 @@ export default function LandingPage() {
       <div className="bg-white py-16">
         <div className="mx-auto max-w-3xl text-center px-6">
           <h2 className="text-2xl font-bold text-slate-900">Ready to see real profit?</h2>
-          <p className="mt-2 text-slate-600">Connect your store and logistics. Get started in minutes.</p>
+          <p className="mt-2 text-slate-600">
+            {isLoggedIn ? "Head back to your dashboard to manage orders and profit." : "Connect your store and logistics. Get started in minutes."}
+          </p>
           <div className="mt-6">
-            <Link
-              href="/register"
-              className="inline-flex items-center rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-              Create account
-            </Link>
+            {mounted && isLoggedIn ? (
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                Go to Dashboard
+              </Link>
+            ) : (
+              <Link
+                href="/register"
+                className="inline-flex items-center rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                Create account
+              </Link>
+            )}
           </div>
         </div>
       </div>

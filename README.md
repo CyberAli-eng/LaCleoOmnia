@@ -9,6 +9,7 @@ Welcome to LaCleoOmnia! This is your complete order management solution.
 - **[GETTING_STARTED.md](./GETTING_STARTED.md)** - Quick 5-minute setup guide ⭐ **START HERE**
 - **[USER_GUIDE.md](./USER_GUIDE.md)** - Complete user manual with all features
 - **[INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md)** - Detailed store integration instructions
+- **[schema.md](./schema.md)** - Database schema (tables, enums, relationships)
 
 ### 🚀 Quick Start
 
