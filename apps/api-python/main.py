@@ -300,6 +300,57 @@ def _get_frontend_url() -> str:
     return os.getenv("FRONTEND_URL") or "http://localhost:3000"
 
 
+def _shopify_app_url_redirect(request: Request) -> RedirectResponse | None:
+    """If this is a Shopify App install redirect (shop in query), redirect to frontend /auth/shopify."""
+    shop = request.query_params.get("shop")
+    if not shop:
+        return None
+    frontend_url = _get_frontend_url()
+    # Preserve shop, host, hmac, timestamp for frontend
+    from urllib.parse import urlencode
+    params = {"shop": shop}
+    for key in ("host", "hmac", "timestamp"):
+        if request.query_params.get(key):
+            params[key] = request.query_params.get(key)
+    to_url = f"{frontend_url}/auth/shopify?{urlencode(params)}"
+    return RedirectResponse(url=to_url, status_code=302)
+
+
+@app.get("/auth/shopify")
+async def auth_shopify_app_url(
+    request: Request,
+):
+    """
+    Shopify App URL handler. When Shopify redirects the merchant here after clicking Install,
+    redirect to the frontend so the user can log in (if needed) and complete OAuth.
+    Set this as your App URL in Shopify: https://<YOUR_API_BASE>/auth/shopify
+    """
+    r = _shopify_app_url_redirect(request)
+    if r is not None:
+        return r
+    frontend_url = _get_frontend_url()
+    return RedirectResponse(url=f"{frontend_url}/dashboard/integrations", status_code=302)
+
+
+@app.get("/")
+async def root_app_url(request: Request):
+    """
+    Root handler. If Shopify sends ?shop=... (App URL set to API root), redirect to frontend /auth/shopify.
+    Otherwise return a short message so API root does not 404.
+    """
+    r = _shopify_app_url_redirect(request)
+    if r is not None:
+        return r
+    return JSONResponse(
+        content={
+            "message": "LaCleoOmnia API",
+            "version": "1.0.0",
+            "docs": "/docs" if settings.IS_DEVELOPMENT else None,
+            "health": "/health",
+        }
+    )
+
+
 @app.get(
     "/auth/shopify/callback",
     summary="Shopify OAuth callback: HMAC verify, token exchange, persist, redirect",

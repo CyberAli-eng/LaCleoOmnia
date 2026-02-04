@@ -14,8 +14,15 @@ export function middleware(request: NextRequest) {
   // If accessing dashboard without token, redirect to login
   if (path.startsWith('/dashboard') && !token) {
     const loginUrl = new URL('/login', request.url);
-    // Add return URL for redirect after login
     loginUrl.searchParams.set('redirect', path);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // If accessing /auth/shopify without token, redirect to login so after login we resume Shopify install
+  if (path === '/auth/shopify' && !token) {
+    const loginUrl = new URL('/login', request.url);
+    const returnPath = path + (request.nextUrl.search || '');
+    loginUrl.searchParams.set('redirect', returnPath);
     return NextResponse.redirect(loginUrl);
   }
   
@@ -37,6 +44,7 @@ export const config = {
     '/dashboard/:path*',
     '/login',
     '/register',
+    '/auth/shopify',
     '/api/auth/:path*'
   ],
 };

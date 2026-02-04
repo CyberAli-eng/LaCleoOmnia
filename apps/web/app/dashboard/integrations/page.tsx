@@ -378,25 +378,25 @@ function IntegrationsPageContent() {
               const primaryBtnClass =
                 PRIMARY_BUTTON_CLASSES[provider.color] ?? "bg-slate-600 hover:bg-slate-700 text-white";
 
-              const canEditCredentials =
-                provider.connectType === "api_key" &&
-                provider.connectEndpoint &&
-                (provider.connectFormFields?.length ?? 0) > 0;
-              const canEditShopifySetup =
-                provider.id === "SHOPIFY" &&
+              const hasConnectForm =
+                provider.connectEndpoint && (provider.connectFormFields?.length ?? 0) > 0;
+              const hasSetupForm =
                 provider.setupStatusEndpoint &&
-                (statusByProvider[provider.id]?.setupConfigured === true || isConnected);
+                (provider.setupConnectEndpoint || (provider.setupFormFields?.length ?? 0) > 0);
+              const canEditWithSetup =
+                hasSetupForm && (statusByProvider[provider.id]?.setupConfigured === true || isConnected);
+              const showEditPencil = isConnected && (hasConnectForm || canEditWithSetup);
 
               return (
                 <div
                   key={provider.id}
                   className="rounded-xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm hover:shadow-md hover:border-slate-300/80 transition-all duration-200 flex flex-col relative"
                 >
-                  {((isConnected && canEditCredentials) || canEditShopifySetup) && (
+                  {showEditPencil && (
                     <button
                       type="button"
                       onClick={() => {
-                        if (canEditShopifySetup) {
+                        if (canEditWithSetup) {
                           setShowSetupForm(showSetupForm === provider.id ? null : provider.id);
                           setShowConnectForm(null);
                         } else {

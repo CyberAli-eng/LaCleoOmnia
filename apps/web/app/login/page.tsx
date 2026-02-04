@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { API_BASE_URL } from "@/utils/api";
 import { setCookie, getCookie } from "@/utils/cookies";
 
@@ -14,13 +14,15 @@ export default function LoginPage() {
     const [googleClientId, setGoogleClientId] = useState<string | null>(null);
     const [mounted, setMounted] = useState(false);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const redirectTo = searchParams?.get("redirect") || "/dashboard";
 
     useEffect(() => {
         setMounted(true);
         // Check both cookie and localStorage for token
         const token = getCookie("token") || localStorage.getItem("token");
         if (token) {
-            router.replace("/dashboard");
+            router.replace(redirectTo.startsWith("/") ? redirectTo : `/dashboard`);
         }
         // Initialize Google Client ID after mount to avoid hydration mismatch
         const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null;
@@ -68,7 +70,8 @@ export default function LoginPage() {
                         localStorage.setItem("token", data.token);
                         localStorage.setItem("user", JSON.stringify(data.user));
                         setCookie("token", data.token, 7); // 7 days
-                        router.push("/dashboard");
+                        const target = redirectTo.startsWith("/") ? redirectTo : "/dashboard";
+                        router.push(target);
                     } catch (err: any) {
                         setError(err.message);
                     } finally {
@@ -169,8 +172,9 @@ export default function LoginPage() {
             localStorage.setItem("user", JSON.stringify(data.user));
             setCookie("token", data.token, 7); // 7 days
 
-            // Use replace to avoid back button issues
-            router.replace("/dashboard");
+            // Use replace to avoid back button issues; respect redirect (e.g. /auth/shopify?shop=...)
+            const target = redirectTo.startsWith("/") ? redirectTo : "/dashboard";
+            router.replace(target);
         } catch (err: any) {
             console.error("Login error:", err);
             let errorMessage = err.message || "Login failed";
