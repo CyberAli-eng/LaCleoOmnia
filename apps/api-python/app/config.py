@@ -110,9 +110,10 @@ class Settings:
     DELHIVERY_API_KEY = os.getenv("DELHIVERY_API_KEY", "")
     DELHIVERY_TRACKING_BASE_URL = os.getenv("DELHIVERY_TRACKING_BASE_URL", "https://track.delhivery.com")
 
-    # Selloship (Base.com Shipper Integration: /authToken, /waybillDetails)
+    # Selloship (auth: selloship.com; API may be api.selloship.com)
     SELLOSHIP_API_KEY = os.getenv("SELLOSHIP_API_KEY", "")
     SELLOSHIP_API_BASE_URL = os.getenv("SELLOSHIP_API_BASE_URL", "https://api.selloship.com")
+    SELLOSHIP_AUTH_URL = os.getenv("SELLOSHIP_AUTH_URL", "https://selloship.com/api/lock_actvs/channels/authToken")
     SELLOSHIP_USERNAME = os.getenv("SELLOSHIP_USERNAME", "")
     SELLOSHIP_PASSWORD = os.getenv("SELLOSHIP_PASSWORD", "")
     

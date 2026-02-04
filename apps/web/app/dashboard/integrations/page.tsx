@@ -493,65 +493,37 @@ function IntegrationsPageContent() {
                         provider.oauthInstallEndpoint &&
                         provider.oauthInstallQueryKey && (
                           <>
-                            {provider.setupStatusEndpoint && (statusByProvider[provider.id]?.setupConfigured !== true) ? (
-                              <div className="space-y-3">
-                                {showSetupForm !== provider.id ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowSetupForm(showSetupForm === provider.id ? null : provider.id)}
-                                    className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
-                                  >
-                                    Configure
-                                  </button>
-                                ) : (
-                                  <div className="space-y-3 pt-2 border-t border-slate-200">
-                                    {(provider.setupFormFields ?? []).map((field) => (
-                                      <div key={field.key}>
-                                        <label className="block text-xs font-medium text-slate-700 mb-1">{field.label}</label>
-                                        <input
-                                          type={field.type ?? "text"}
-                                          value={connectFormData[formKey(provider.id, "setup_" + field.key)] ?? ""}
-                                          onChange={(e) =>
-                                            setConnectFormData((prev) => ({
-                                              ...prev,
-                                              [formKey(provider.id, "setup_" + field.key)]: e.target.value,
-                                            }))
-                                          }
-                                          placeholder={field.placeholder}
-                                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                      </div>
-                                    ))}
-                                    <div className="flex gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleSetupSave(provider)}
-                                        disabled={loading === `setup-${provider.id}`}
-                                        className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                                      >
-                                        {loading === `setup-${provider.id}` ? "Saving..." : "Save credentials"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setShowSetupForm(null)}
-                                        className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
+                            {(provider.setupStatusEndpoint && (statusByProvider[provider.id]?.setupConfigured !== true) && showSetupForm !== provider.id) && (
                               <button
-                                onClick={() => handleOAuthConnect(provider)}
-                                disabled={loading === `oauth-${provider.id}`}
-                                className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                                type="button"
+                                onClick={() => setShowSetupForm(showSetupForm === provider.id ? null : provider.id)}
+                                className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                               >
-                                {loading === `oauth-${provider.id}`
-                                  ? "Redirecting..."
-                                  : "Connect via OAuth (recommended)"}
+                                Configure
                               </button>
+                            )}
+                            {(provider.setupStatusEndpoint && (statusByProvider[provider.id]?.setupConfigured === true || isConnected) && showSetupForm !== provider.id) && (
+                              <div className="space-y-2">
+                                <button
+                                  type="button"
+                                  onClick={() => { setShowSetupForm(provider.id); setShowConnectForm(null); }}
+                                  className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+                                >
+                                  Edit app credentials (Client ID &amp; Secret)
+                                </button>
+                                <button
+                                  onClick={() => handleOAuthConnect(provider)}
+                                  disabled={loading === `oauth-${provider.id}`}
+                                  className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                                >
+                                  {loading === `oauth-${provider.id}`
+                                    ? "Redirecting..."
+                                    : "Connect via OAuth (recommended)"}
+                                </button>
+                                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                  If Shopify says &quot;redirect_uri is not whitelisted&quot;, in your Shopify app go to <strong>Configuration</strong> → <strong>Allowed redirection URL(s)</strong> and add exactly: <code className="text-xs break-all">https://lacleoomnia.onrender.com/auth/shopify/callback</code> (no trailing slash).
+                                </p>
+                              </div>
                             )}
                           </>
                         )}
@@ -579,6 +551,55 @@ function IntegrationsPageContent() {
                       )}
                     </div>
                   )}
+
+                  {showSetupForm === provider.id &&
+                    hasSetupForm &&
+                    (provider.setupFormFields?.length ?? 0) > 0 && (
+                      <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
+                        <p className="text-xs text-slate-500">
+                          {statusByProvider[provider.id]?.setupConfigured || isConnected
+                            ? "Update your Shopify app Client ID and Client secret below."
+                            : "Enter your Shopify app Client ID (API key) and Client secret from the app Configuration."}
+                        </p>
+                        {(provider.setupFormFields ?? []).map((field) => (
+                          <div key={field.key}>
+                            <label className="block text-xs font-medium text-slate-700 mb-1">{field.label}</label>
+                            <input
+                              type={field.type ?? "text"}
+                              value={connectFormData[formKey(provider.id, "setup_" + field.key)] ?? ""}
+                              onChange={(e) =>
+                                setConnectFormData((prev) => ({
+                                  ...prev,
+                                  [formKey(provider.id, "setup_" + field.key)]: e.target.value,
+                                }))
+                              }
+                              placeholder={field.placeholder}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        ))}
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          In Shopify, add this exact URL under <strong>Allowed redirection URL(s)</strong>: <code className="text-xs break-all">https://lacleoomnia.onrender.com/auth/shopify/callback</code>
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSetupSave(provider)}
+                            disabled={loading === `setup-${provider.id}`}
+                            className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {loading === `setup-${provider.id}` ? "Saving..." : "Save credentials"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowSetupForm(null)}
+                            className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                   {showConnectForm === provider.id &&
                     provider.connectType === "api_key" &&

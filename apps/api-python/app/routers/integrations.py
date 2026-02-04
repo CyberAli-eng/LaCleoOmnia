@@ -74,13 +74,13 @@ def _get_integration_catalog() -> dict:
                             {"key": "apiKey", "label": "API Key (Client ID)", "type": "text", "placeholder": "From Shopify Partner app"},
                             {"key": "apiSecret", "label": "API Secret (Client secret)", "type": "password", "placeholder": "From Shopify Partner app"}
                         ],
-                        "setupGuide": "LaCleoOmnia uses your dashboard URL and API URL. In Shopify set App URL to https://la-cleo-omnia-web.vercel.app/auth/shopify and Allowed redirection URL to https://lacleoomnia.onrender.com/auth/shopify/callback. Then add your app API Key and Secret in this card (pencil or Configure) and connect via OAuth. No .env required.",
+                        "setupGuide": "1) Create app in Shopify → Configuration. 2) App URL: https://la-cleo-omnia-web.vercel.app/auth/shopify 3) Allowed redirection URL: https://lacleoomnia.onrender.com/auth/shopify/callback 4) Copy Client ID & secret → paste in this card → Save. 5) Connect via OAuth or Install from Shopify.",
                         "setupSteps": [
-                            {"step": 1, "title": "Create a new app in Shopify", "description": "In your Shopify Admin go to Settings → Apps and sales channels → Develop apps → Create an app (or Create app). Give it a name (e.g. LaCleoOmnia). Each user (e.g. Shaiz, Sadaf) can create their own app and add its credentials here."},
-                            {"step": 2, "title": "Set App URL (exact value)", "description": "Open your app → Configuration. In App URL enter exactly: https://la-cleo-omnia-web.vercel.app/auth/shopify (no trailing slash). This is the LaCleoOmnia dashboard. When you install the app from Shopify, you will be sent here to log in and authorize."},
-                            {"step": 3, "title": "Set Allowed redirection URL(s) (exact value)", "description": "In the same Configuration page, under Allowed redirection URL(s), add exactly one URL: https://lacleoomnia.onrender.com/auth/shopify/callback (no trailing slash). This is the LaCleoOmnia API. Shopify will send the authorization code here after you approve."},
-                            {"step": 4, "title": "Copy Client credentials and add them here", "description": "In Shopify, open your app → Client credentials. Copy the Client ID and Client secret. In this dashboard, open the Shopify card above → click the pencil icon (top-right) or Configure → paste Client ID into API Key and Client secret into API Secret → Save. No .env or server config needed."},
-                            {"step": 5, "title": "When to install and how to connect", "description": "Option A — Install from Shopify: In your app in Shopify, click Install app (or Test your app). You will be redirected to the dashboard; log in if needed, then you will be sent to Shopify to approve. Option B — Connect from dashboard: On this page click Connect via OAuth, enter your store domain (e.g. mystore or mystore.myshopify.com), then approve in Shopify. Required scopes: read_orders, write_orders, read_products, write_products, read_inventory, write_inventory, read_locations."},
+                            {"step": 1, "title": "Create app", "description": "Shopify Admin → Settings → Apps → Develop apps → Create an app. Name it (e.g. LaCleoOmnia)."},
+                            {"step": 2, "title": "App URL", "description": "App → Configuration. App URL = https://la-cleo-omnia-web.vercel.app/auth/shopify (no trailing slash)."},
+                            {"step": 3, "title": "Redirect URL", "description": "Same page. Allowed redirection URL(s) = https://lacleoomnia.onrender.com/auth/shopify/callback (no trailing slash)."},
+                            {"step": 4, "title": "Paste credentials here", "description": "Shopify → Client credentials. Copy Client ID & secret. Here: pencil or Edit app credentials → paste → Save."},
+                            {"step": 5, "title": "Connect", "description": "Click Connect via OAuth, enter store (e.g. mystore.myshopify.com), then approve in Shopify."},
                         ],
                         "actions": [
                             {"id": "sync", "label": "Sync Shopify", "method": "POST", "endpoint": "/integrations/shopify/sync", "primary": True},
@@ -105,11 +105,11 @@ def _get_integration_catalog() -> dict:
                             {"key": "marketplace_id", "label": "Marketplace ID (optional)", "type": "text", "placeholder": "e.g. A21TJRUUN4KGV for India"},
                         ],
                         "setupSteps": [
-                            {"step": 1, "title": "Open Seller Central", "description": "Log in to sellercentral.amazon.in (or your marketplace). Go to Apps & Services → Develop Apps (or Manage Your Apps)."},
-                            {"step": 2, "title": "Create or select an app", "description": "Create a new app or use an existing one. Note your Seller ID (Account Info)."},
-                            {"step": 3, "title": "Authorize your app", "description": "Use the SP-API authorization workflow (website or self-authorization) to get a Refresh Token. Store it securely."},
-                            {"step": 4, "title": "Get LWA credentials", "description": "From your app registration copy the Client ID and Client Secret (LWA). Marketplace ID is optional (default: India A21TJRUUN4KGV)."},
-                            {"step": 5, "title": "Enter credentials", "description": "Paste Seller ID, Refresh Token, Client ID, and Client Secret in the form below and click Connect."},
+                            {"step": 1, "title": "Seller Central", "description": "Log in to sellercentral.amazon.in → Apps & Services → Develop Apps."},
+                            {"step": 2, "title": "Create app", "description": "Create or select an app. Note your Seller ID (Account Info)."},
+                            {"step": 3, "title": "Get Refresh Token", "description": "Use SP-API authorization to get a Refresh Token. Store it securely."},
+                            {"step": 4, "title": "LWA credentials", "description": "From app registration copy Client ID & Client Secret. Marketplace ID optional (India default)."},
+                            {"step": 5, "title": "Paste & connect", "description": "Paste Seller ID, Refresh Token, Client ID, Client Secret in the form → Connect."},
                         ],
                         "actions": [{"id": "sync", "label": "Sync orders", "method": "POST", "endpoint": "/integrations/providers/amazon/sync", "primary": True}],
                     },
@@ -128,9 +128,9 @@ def _get_integration_catalog() -> dict:
                             {"key": "client_secret", "label": "Client Secret", "type": "password", "placeholder": "From Seller Hub → API"},
                         ],
                         "setupSteps": [
-                            {"step": 1, "title": "Open Seller Hub", "description": "Log in to seller.flipkart.com. Go to Settings or Integrations → API / Developer."},
-                            {"step": 2, "title": "Create API credentials", "description": "Generate or copy your Seller ID, Client ID, and Client Secret (OAuth2 client credentials with scope Seller_Api)."},
-                            {"step": 3, "title": "Enter credentials", "description": "Paste Seller ID, Client ID, and Client Secret in the form on this page and click Connect."},
+                            {"step": 1, "title": "Seller Hub", "description": "Log in to seller.flipkart.com → Settings or Integrations → API."},
+                            {"step": 2, "title": "Get credentials", "description": "Generate or copy Seller ID, Client ID, Client Secret (OAuth2, scope Seller_Api)."},
+                            {"step": 3, "title": "Paste & connect", "description": "Paste all three in the form on this card → Connect."},
                         ],
                         "actions": [{"id": "sync", "label": "Sync orders", "method": "POST", "endpoint": "/integrations/providers/flipkart/sync", "primary": True}],
                     },
@@ -148,9 +148,9 @@ def _get_integration_catalog() -> dict:
                             {"key": "apiKey", "label": "API Key / Token", "type": "password", "placeholder": "From Myntra Partner Portal (PPMP/Omni API)"},
                         ],
                         "setupSteps": [
-                            {"step": 1, "title": "Open Myntra Partner Portal", "description": "Log in to the Myntra partner portal (mmip.myntrainfo.com or as per your invite)."},
-                            {"step": 2, "title": "Find API access", "description": "Navigate to API or Integration section (PPMP API v4 / Omni API v4). Generate or copy your Partner ID and API key/token."},
-                            {"step": 3, "title": "Enter credentials", "description": "Paste Partner ID and API key in the form on this page and click Connect."},
+                            {"step": 1, "title": "Partner portal", "description": "Log in to Myntra partner portal (mmip.myntrainfo.com or as per invite)."},
+                            {"step": 2, "title": "API section", "description": "Go to API / Integration (PPMP or Omni). Copy Partner ID & API key."},
+                            {"step": 3, "title": "Paste & connect", "description": "Paste Partner ID and API key in the form → Connect."},
                         ],
                         "actions": [{"id": "sync", "label": "Sync orders", "method": "POST", "endpoint": "/integrations/providers/myntra/sync", "primary": True}],
                     },
@@ -175,11 +175,11 @@ def _get_integration_catalog() -> dict:
                             {"key": "access_token", "label": "Access Token", "type": "password", "placeholder": "Marketing API token from Business Settings"}
                         ],
                         "setupSteps": [
-                            {"step": 1, "title": "Open Business Settings", "description": "Go to business.facebook.com and sign in. Ensure your ad account is linked to a Business Manager."},
-                            {"step": 2, "title": "Create a System User (recommended)", "description": "In Business Settings go to Users → System Users. Create a system user or use an existing one. Assign it to your Ad Account with Admin or Analyst role."},
-                            {"step": 3, "title": "Generate access token", "description": "Select the system user → Generate new token. Choose your app (or create one in developers.facebook.com). Select permissions: ads_management, ads_read, business_management. Generate and copy the token immediately (it may not be shown again)."},
-                            {"step": 4, "title": "Get Ad Account ID", "description": "In Meta Ads Manager (adsmanager.facebook.com), open Account Settings. Your Ad Account ID is shown (e.g. 123456789). Use the number only or with act_ prefix."},
-                            {"step": 5, "title": "Enter credentials", "description": "Paste Ad Account ID and Access Token in the form below and click Connect. Ad spend syncs daily at 00:30 IST for CAC and profit calculations."},
+                            {"step": 1, "title": "Business Settings", "description": "Go to business.facebook.com. Ensure ad account is in Business Manager."},
+                            {"step": 2, "title": "System user", "description": "Users → System Users → create or use one. Assign to Ad Account (Admin/Analyst)."},
+                            {"step": 3, "title": "Access token", "description": "System user → Generate token. App + permissions: ads_management, ads_read, business_management. Copy token (shown once)."},
+                            {"step": 4, "title": "Ad Account ID", "description": "adsmanager.facebook.com → Account Settings. Copy Ad Account ID (number or act_123...)."},
+                            {"step": 5, "title": "Paste & connect", "description": "Paste Ad Account ID and token in the form → Connect. Syncs daily for CAC."},
                         ],
                         "actions": [],
                         "description": "Sync daily ad spend from Meta (Facebook/Instagram). Used for blended CAC per order. Synced daily at 00:30 IST.",
@@ -201,10 +201,10 @@ def _get_integration_catalog() -> dict:
                             {"key": "customer_id", "label": "Customer ID (optional)", "type": "text", "placeholder": "Google Ads customer ID"}
                         ],
                         "setupSteps": [
-                            {"step": 1, "title": "Enable Google Ads API", "description": "In Google Cloud Console (console.cloud.google.com) create a project and enable the Google Ads API. Create OAuth 2.0 credentials (Desktop or Web application) and note Client ID and Client Secret."},
-                            {"step": 2, "title": "Get Developer Token", "description": "In Google Ads (ads.google.com) go to Tools → API Center. Apply for a Developer Token; use Test account for development. Copy the Developer Token."},
-                            {"step": 3, "title": "Obtain Refresh Token", "description": "Run the OAuth 2.0 flow (e.g. using Google's OAuth Playground or your app) with scope https://www.googleapis.com/auth/adwords. Authorize and exchange the code for a Refresh Token. Note your Customer ID (numeric, no dashes) from Google Ads."},
-                            {"step": 4, "title": "Enter credentials", "description": "Paste Developer Token, Client ID, Client Secret, Refresh Token, and optional Customer ID in the form and click Connect. Ad spend syncs daily for CAC and profit."},
+                            {"step": 1, "title": "Google Cloud", "description": "console.cloud.google.com → project → enable Google Ads API → create OAuth credentials. Note Client ID & Secret."},
+                            {"step": 2, "title": "Developer Token", "description": "ads.google.com → Tools → API Center. Get Developer Token (Test for dev)."},
+                            {"step": 3, "title": "Refresh Token", "description": "OAuth flow with scope .../auth/adwords. Get Refresh Token. Note Customer ID (numeric, no dashes)."},
+                            {"step": 4, "title": "Paste & connect", "description": "Paste Developer Token, Client ID, Secret, Refresh Token (+ optional Customer ID) → Connect. Syncs daily."},
                         ],
                         "actions": [],
                     },
@@ -226,10 +226,9 @@ def _get_integration_catalog() -> dict:
                         "connectBodyKey": "apiKey",
                         "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "From Delhivery One → Settings → API Setup"}],
                         "setupSteps": [
-                            {"step": 1, "title": "Log in to Delhivery One", "description": "Go to one.delhivery.com (or your Delhivery partner portal) and sign in with your account."},
-                            {"step": 2, "title": "Open API Setup", "description": "In the main menu go to Settings → API Setup. View your existing API token or click 'Request Live API Token' to generate a new one."},
-                            {"step": 3, "title": "Copy token immediately", "description": "The token is visible for only 5 minutes, then hidden for security. Copy and store it securely. Generating a new token invalidates the previous one."},
-                            {"step": 4, "title": "Enter API key", "description": "Paste your Delhivery API key in the form on this page and click Connect. Shipment sync runs every 30 minutes for tracking and RTO updates."},
+                            {"step": 1, "title": "Delhivery One", "description": "Log in to one.delhivery.com (or partner portal)."},
+                            {"step": 2, "title": "API token", "description": "Settings → API Setup. Request Live API Token or view existing. Copy immediately (visible ~5 min)."},
+                            {"step": 3, "title": "Paste & connect", "description": "Paste API key in the form on this card → Connect. Syncs every 30 min for tracking & RTO."},
                         ],
                         "actions": [
                             {"id": "syncShipments", "label": "Sync shipments", "method": "POST", "endpoint": "/shipments/sync", "primary": True},
@@ -243,12 +242,14 @@ def _get_integration_catalog() -> dict:
                         "connectType": "api_key",
                         "statusEndpoint": "/integrations/providers/selloship/status",
                         "connectEndpoint": "/integrations/providers/selloship/connect",
-                        "connectBodyKey": "apiKey",
-                        "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "Token from auth (e.g. 6981e432... or full \"token 6981e432...\")"}],
+                        "connectBodyKey": "username",
+                        "connectFormFields": [
+                            {"key": "username", "label": "Username", "type": "text", "placeholder": "Your Selloship login email or username"},
+                            {"key": "password", "label": "Password", "type": "password", "placeholder": "Your Selloship password"}
+                        ],
                         "setupSteps": [
-                            {"step": 1, "title": "Contact Selloship", "description": "Get API credentials from your Selloship account manager or partner portal. Selloship is a shipping aggregator; integration is typically enabled per account."},
-                            {"step": 2, "title": "Get API key or token", "description": "Obtain your API key (or username/password for token-based auth). Configure forward shipment options and AWB generation as per your contract."},
-                            {"step": 3, "title": "Enter API key", "description": "Paste your Selloship API key in the form on this page and click Connect. Shipment sync runs every 30 minutes for tracking and labels."},
+                            {"step": 1, "title": "Selloship login", "description": "Use the same username and password you use to log in to Selloship (or partner portal)."},
+                            {"step": 2, "title": "Enter & connect", "description": "Enter username and password below → Connect. We'll get a token and save it for tracking, labels, and sync."},
                         ],
                         "actions": [
                             {"id": "syncShipments", "label": "Sync shipments", "method": "POST", "endpoint": "/shipments/sync", "primary": True},
@@ -329,7 +330,7 @@ PROVIDER_REQUIRED_KEYS: dict[str, list[str]] = {
     "meta_ads": ["ad_account_id", "access_token"],
     "google_ads": ["developer_token", "client_id", "client_secret", "refresh_token"],
     "delhivery": ["apiKey"],
-    "selloship": ["apiKey"],
+    "selloship": ["username", "password"],
 }
 
 
@@ -515,6 +516,22 @@ async def connect_provider(
     if not body or not any(str(v).strip() for v in body.values() if v is not None):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one credential value is required.")
     _validate_provider_credentials(provider_id, body)
+
+    # Selloship: validate username/password by fetching a token; then save credentials (we fetch token when needed)
+    if provider_id == "selloship":
+        from app.services.selloship_service import fetch_selloship_token
+        username = (body.get("username") or "").strip()
+        password = body.get("password")
+        if not username or not password:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username and password are required.")
+        token = await fetch_selloship_token(username, str(password).strip())
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Selloship username or password. Check and try again.",
+            )
+        body = {"username": username, "password": str(password).strip()}
+
     value_json = json.dumps(body)
     encrypted = encrypt_token(value_json)
     cred = db.query(ProviderCredential).filter(
@@ -550,6 +567,8 @@ async def connect_provider(
             db, str(current_user.id), ChannelType.MYNTRA, seller_id, "myntra"
         )
 
+    if provider_id == "selloship":
+        return {"connected": True, "message": "Selloship connected. We'll use your credentials to get a token for tracking, labels, and sync."}
     return {"connected": True, "message": "Credentials saved"}
 
 

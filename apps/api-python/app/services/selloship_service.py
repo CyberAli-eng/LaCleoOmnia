@@ -157,21 +157,52 @@ def build_waybill_payload_from_order(
     return payload
 
 
+async def fetch_selloship_token(
+    username: str,
+    password: str,
+    auth_url: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Call Selloship auth API (e.g. selloship.com/api/lock_actvs/channels/authToken).
+    Returns the token string on SUCCESS, None otherwise. Used to validate credentials on connect.
+    """
+    url = (auth_url or getattr(settings, "SELLOSHIP_AUTH_URL", None) or "https://selloship.com/api/lock_actvs/channels/authToken").strip()
+    if not username or not password:
+        return None
+    payload = {"username": username.strip(), "password": password}
+    headers = {"Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        logger.warning("Selloship fetch_selloship_token failed: %s", e)
+        return None
+    if isinstance(data, dict) and (data.get("status") or "").upper() == "SUCCESS":
+        token = data.get("token")
+        if token:
+            return token
+    return None
+
+
 def get_selloship_client(
     api_key: Optional[str] = None,
     username: Optional[str] = None,
     password: Optional[str] = None,
+    auth_url: Optional[str] = None,
 ) -> "SelloshipService":
     """
     Return a Selloship client. Uses Base.com Shipper Integration flow.
-    - If username + password provided (or from env): use POST /authToken to get token.
+    - If username + password: POST to auth_url (or SELLOSHIP_AUTH_URL) to get token, then use Bearer.
     - Else use api_key (or SELLOSHIP_API_KEY) as Bearer token.
     """
-    key = api_key or getattr(settings, "SELLOSHIP_API_KEY", None) or ""
-    user = username or getattr(settings, "SELLOSHIP_USERNAME", None) or ""
-    pwd = password or getattr(settings, "SELLOSHIP_PASSWORD", None) or ""
+    key = (api_key or getattr(settings, "SELLOSHIP_API_KEY", None) or "").strip() or None
+    user = (username or getattr(settings, "SELLOSHIP_USERNAME", None) or "").strip() or None
+    pwd = (password or getattr(settings, "SELLOSHIP_PASSWORD", None) or "").strip() or None
     base = getattr(settings, "SELLOSHIP_API_BASE_URL", "https://api.selloship.com")
-    return SelloshipService(api_key=key, base_url=base, username=user or None, password=pwd or None)
+    url = (auth_url or getattr(settings, "SELLOSHIP_AUTH_URL", None) or "").strip() or None
+    return SelloshipService(api_key=key or "", base_url=base, username=user, password=pwd, auth_url=url)
 
 
 class SelloshipService:
@@ -191,20 +222,22 @@ class SelloshipService:
         base_url: str = "https://api.selloship.com",
         username: Optional[str] = None,
         password: Optional[str] = None,
+        auth_url: Optional[str] = None,
     ):
         self.api_key = (api_key or "").strip()
         self.base_url = base_url.rstrip("/")
         self.username = (username or "").strip() or None
         self.password = (password or "").strip() or None
+        self.auth_url = (auth_url or "").strip() or None
 
     def _has_token_auth(self) -> bool:
         return bool(self.username and self.password)
 
     async def _get_auth_token(self) -> Optional[str]:
-        """POST /authToken per Base.com spec. Returns token or None."""
+        """POST to auth URL (or base_url/authToken) with username/password. Returns token or None."""
         if not self._has_token_auth():
             return None
-        url = f"{self.base_url}/authToken"
+        url = self.auth_url or f"{self.base_url}/authToken"
         payload = {"username": self.username, "password": self.password}
         headers = {"Content-Type": "application/json"}
         try:
