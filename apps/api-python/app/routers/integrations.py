@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -42,6 +42,7 @@ from app.services.shopify import ShopifyService
 from sqlalchemy import func
 from app.services.credentials import encrypt_token, decrypt_token
 from app.services.ad_spend_sync import sync_ad_spend_for_date
+from app.services.sync_engine import SyncEngine
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -98,14 +99,19 @@ def _get_integration_catalog() -> dict:
                         "connectBodyKey": "apiKey",
                         "connectFormFields": [
                             {"key": "seller_id", "label": "Seller ID", "type": "text", "placeholder": "Your Amazon Seller Central ID"},
-                            {"key": "apiKey", "label": "API Key / Access Key", "type": "password", "placeholder": "From Seller Central → Apps & Services"},
+                            {"key": "refresh_token", "label": "LWA Refresh Token", "type": "password", "placeholder": "From SP-API app authorization"},
+                            {"key": "client_id", "label": "LWA Client ID", "type": "text", "placeholder": "App client ID from Developer Central"},
+                            {"key": "client_secret", "label": "LWA Client Secret", "type": "password", "placeholder": "App client secret"},
+                            {"key": "marketplace_id", "label": "Marketplace ID (optional)", "type": "text", "placeholder": "e.g. A21TJRUUN4KGV for India"},
                         ],
                         "setupSteps": [
                             {"step": 1, "title": "Open Seller Central", "description": "Log in to sellercentral.amazon.in (or your marketplace). Go to Apps & Services → Develop Apps (or Manage Your Apps)."},
-                            {"step": 2, "title": "Create or select an app", "description": "Create a new app or use an existing one. Note the Seller ID (also in Account Info → Merchant Token)."},
-                            {"step": 3, "title": "Get credentials", "description": "From your app or from MWS/SP-API credentials, copy the Seller ID, and the API key (Access Key / LWA client secret). Paste them in the form on this page."},
+                            {"step": 2, "title": "Create or select an app", "description": "Create a new app or use an existing one. Note your Seller ID (Account Info)."},
+                            {"step": 3, "title": "Authorize your app", "description": "Use the SP-API authorization workflow (website or self-authorization) to get a Refresh Token. Store it securely."},
+                            {"step": 4, "title": "Get LWA credentials", "description": "From your app registration copy the Client ID and Client Secret (LWA). Marketplace ID is optional (default: India A21TJRUUN4KGV)."},
+                            {"step": 5, "title": "Enter credentials", "description": "Paste Seller ID, Refresh Token, Client ID, and Client Secret in the form below and click Connect."},
                         ],
-                        "actions": [],
+                        "actions": [{"id": "sync", "label": "Sync orders", "method": "POST", "endpoint": "/integrations/providers/amazon/sync", "primary": True}],
                     },
                     {
                         "id": "FLIPKART",
@@ -118,14 +124,15 @@ def _get_integration_catalog() -> dict:
                         "connectBodyKey": "apiKey",
                         "connectFormFields": [
                             {"key": "seller_id", "label": "Seller ID", "type": "text", "placeholder": "Flipkart Seller ID"},
-                            {"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "From Flipkart Seller Hub → API"},
+                            {"key": "client_id", "label": "Client ID", "type": "text", "placeholder": "From Seller Hub → API"},
+                            {"key": "client_secret", "label": "Client Secret", "type": "password", "placeholder": "From Seller Hub → API"},
                         ],
                         "setupSteps": [
                             {"step": 1, "title": "Open Seller Hub", "description": "Log in to seller.flipkart.com. Go to Settings or Integrations → API / Developer."},
-                            {"step": 2, "title": "Generate API key", "description": "Create or copy your Seller ID and API key. Flipkart may provide client_id and client_secret; use them as configured by your app."},
-                            {"step": 3, "title": "Enter credentials", "description": "Paste Seller ID and API key in the form on this page and click Connect."},
+                            {"step": 2, "title": "Create API credentials", "description": "Generate or copy your Seller ID, Client ID, and Client Secret (OAuth2 client credentials with scope Seller_Api)."},
+                            {"step": 3, "title": "Enter credentials", "description": "Paste Seller ID, Client ID, and Client Secret in the form on this page and click Connect."},
                         ],
-                        "actions": [],
+                        "actions": [{"id": "sync", "label": "Sync orders", "method": "POST", "endpoint": "/integrations/providers/flipkart/sync", "primary": True}],
                     },
                     {
                         "id": "MYNTRA",
@@ -138,14 +145,14 @@ def _get_integration_catalog() -> dict:
                         "connectBodyKey": "apiKey",
                         "connectFormFields": [
                             {"key": "seller_id", "label": "Partner ID / Seller ID", "type": "text", "placeholder": "Myntra Partner ID"},
-                            {"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "From Myntra Partner Portal"},
+                            {"key": "apiKey", "label": "API Key / Token", "type": "password", "placeholder": "From Myntra Partner Portal (PPMP/Omni API)"},
                         ],
                         "setupSteps": [
-                            {"step": 1, "title": "Open Myntra Partner Portal", "description": "Log in to the Myntra seller/partner portal (partners.myntra.com or as per your invite)."},
-                            {"step": 2, "title": "Find API access", "description": "Navigate to API or Integration section. Generate or copy your Partner ID and API key/token."},
+                            {"step": 1, "title": "Open Myntra Partner Portal", "description": "Log in to the Myntra partner portal (mmip.myntrainfo.com or as per your invite)."},
+                            {"step": 2, "title": "Find API access", "description": "Navigate to API or Integration section (PPMP API v4 / Omni API v4). Generate or copy your Partner ID and API key/token."},
                             {"step": 3, "title": "Enter credentials", "description": "Paste Partner ID and API key in the form on this page and click Connect."},
                         ],
-                        "actions": [],
+                        "actions": [{"id": "sync", "label": "Sync orders", "method": "POST", "endpoint": "/integrations/providers/myntra/sync", "primary": True}],
                     },
                 ],
             },
@@ -164,8 +171,15 @@ def _get_integration_catalog() -> dict:
                         "connectEndpoint": "/integrations/providers/meta_ads/connect",
                         "connectBodyKey": "access_token",
                         "connectFormFields": [
-                            {"key": "ad_account_id", "label": "Ad Account ID", "type": "text", "placeholder": "e.g. 123456789"},
-                            {"key": "access_token", "label": "Access Token", "type": "password", "placeholder": "Meta Marketing API token"}
+                            {"key": "ad_account_id", "label": "Ad Account ID", "type": "text", "placeholder": "e.g. act_123456789 (no 'act_' required)"},
+                            {"key": "access_token", "label": "Access Token", "type": "password", "placeholder": "Marketing API token from Business Settings"}
+                        ],
+                        "setupSteps": [
+                            {"step": 1, "title": "Open Business Settings", "description": "Go to business.facebook.com and sign in. Ensure your ad account is linked to a Business Manager."},
+                            {"step": 2, "title": "Create a System User (recommended)", "description": "In Business Settings go to Users → System Users. Create a system user or use an existing one. Assign it to your Ad Account with Admin or Analyst role."},
+                            {"step": 3, "title": "Generate access token", "description": "Select the system user → Generate new token. Choose your app (or create one in developers.facebook.com). Select permissions: ads_management, ads_read, business_management. Generate and copy the token immediately (it may not be shown again)."},
+                            {"step": 4, "title": "Get Ad Account ID", "description": "In Meta Ads Manager (adsmanager.facebook.com), open Account Settings. Your Ad Account ID is shown (e.g. 123456789). Use the number only or with act_ prefix."},
+                            {"step": 5, "title": "Enter credentials", "description": "Paste Ad Account ID and Access Token in the form below and click Connect. Ad spend syncs daily at 00:30 IST for CAC and profit calculations."},
                         ],
                         "actions": [],
                         "description": "Sync daily ad spend from Meta (Facebook/Instagram). Used for blended CAC per order. Synced daily at 00:30 IST.",
@@ -187,10 +201,10 @@ def _get_integration_catalog() -> dict:
                             {"key": "customer_id", "label": "Customer ID (optional)", "type": "text", "placeholder": "Google Ads customer ID"}
                         ],
                         "setupSteps": [
-                            {"step": 1, "title": "Enable Google Ads API", "description": "In Google Cloud Console create a project and enable Google Ads API. Create OAuth 2.0 credentials (Desktop or Web)."},
-                            {"step": 2, "title": "Get Developer Token", "description": "In Google Ads → Tools → API Center, apply for a Developer Token. Use Test account for development."},
-                            {"step": 3, "title": "OAuth and refresh token", "description": "Use the OAuth flow to get Client ID, Client Secret, and Refresh Token. Optionally note your Customer ID (without dashes)."},
-                            {"step": 4, "title": "Enter credentials", "description": "Paste Developer Token, Client ID, Client Secret, Refresh Token (and optional Customer ID) in the form and click Connect."},
+                            {"step": 1, "title": "Enable Google Ads API", "description": "In Google Cloud Console (console.cloud.google.com) create a project and enable the Google Ads API. Create OAuth 2.0 credentials (Desktop or Web application) and note Client ID and Client Secret."},
+                            {"step": 2, "title": "Get Developer Token", "description": "In Google Ads (ads.google.com) go to Tools → API Center. Apply for a Developer Token; use Test account for development. Copy the Developer Token."},
+                            {"step": 3, "title": "Obtain Refresh Token", "description": "Run the OAuth 2.0 flow (e.g. using Google's OAuth Playground or your app) with scope https://www.googleapis.com/auth/adwords. Authorize and exchange the code for a Refresh Token. Note your Customer ID (numeric, no dashes) from Google Ads."},
+                            {"step": 4, "title": "Enter credentials", "description": "Paste Developer Token, Client ID, Client Secret, Refresh Token, and optional Customer ID in the form and click Connect. Ad spend syncs daily for CAC and profit."},
                         ],
                         "actions": [],
                     },
@@ -210,11 +224,12 @@ def _get_integration_catalog() -> dict:
                         "statusEndpoint": "/integrations/providers/delhivery/status",
                         "connectEndpoint": "/integrations/providers/delhivery/connect",
                         "connectBodyKey": "apiKey",
-                        "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "Your Delhivery API key"}],
+                        "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "From Delhivery One → Settings → API Setup"}],
                         "setupSteps": [
-                            {"step": 1, "title": "Log in to Delhivery", "description": "Go to the Delhivery partner/carrier dashboard and sign in with your account."},
-                            {"step": 2, "title": "Get API key", "description": "Navigate to API or Integration section. Generate or copy your API key (used for authentication)."},
-                            {"step": 3, "title": "Enter API key", "description": "Paste your API key in the form on this page and click Connect. Shipment sync runs every 30 minutes."},
+                            {"step": 1, "title": "Log in to Delhivery One", "description": "Go to one.delhivery.com (or your Delhivery partner portal) and sign in with your account."},
+                            {"step": 2, "title": "Open API Setup", "description": "In the main menu go to Settings → API Setup. View your existing API token or click 'Request Live API Token' to generate a new one."},
+                            {"step": 3, "title": "Copy token immediately", "description": "The token is visible for only 5 minutes, then hidden for security. Copy and store it securely. Generating a new token invalidates the previous one."},
+                            {"step": 4, "title": "Enter API key", "description": "Paste your Delhivery API key in the form on this page and click Connect. Shipment sync runs every 30 minutes for tracking and RTO updates."},
                         ],
                         "actions": [
                             {"id": "syncShipments", "label": "Sync shipments", "method": "POST", "endpoint": "/shipments/sync", "primary": True},
@@ -229,11 +244,11 @@ def _get_integration_catalog() -> dict:
                         "statusEndpoint": "/integrations/providers/selloship/status",
                         "connectEndpoint": "/integrations/providers/selloship/connect",
                         "connectBodyKey": "apiKey",
-                        "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "Your Selloship API key"}],
+                        "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "From Selloship team or partner portal"}],
                         "setupSteps": [
-                            {"step": 1, "title": "Log in to Selloship", "description": "Access your Selloship dashboard or partner portal."},
-                            {"step": 2, "title": "Get API key", "description": "Find API or Integration settings. Copy your API key (or use username/password if using token-based auth)."},
-                            {"step": 3, "title": "Enter API key", "description": "Paste your API key in the form on this page and click Connect. Shipment sync runs every 30 minutes."},
+                            {"step": 1, "title": "Contact Selloship", "description": "Get API credentials from your Selloship account manager or partner portal. Selloship is a shipping aggregator; integration is typically enabled per account."},
+                            {"step": 2, "title": "Get API key or token", "description": "Obtain your API key (or username/password for token-based auth). Configure forward shipment options and AWB generation as per your contract."},
+                            {"step": 3, "title": "Enter API key", "description": "Paste your Selloship API key in the form on this page and click Connect. Shipment sync runs every 30 minutes for tracking and labels."},
                         ],
                         "actions": [
                             {"id": "syncShipments", "label": "Sync shipments", "method": "POST", "endpoint": "/shipments/sync", "primary": True},
@@ -287,7 +302,7 @@ async def get_connected_summary(
         ch_type = acc.channel.name.value if hasattr(acc.channel.name, "value") else str(acc.channel.name)
         if ch_type not in seen:
             seen.add(ch_type)
-            result.append({"id": ch_type, "name": names.get(ch_type, ch_type)})
+            result.append({"id": ch_type, "name": names.get(ch_type, ch_type), "accountId": acc.id})
     # Credential-based providers (meta_ads, google_ads, delhivery, selloship)
     for pid in ALLOWED_CREDENTIAL_PROVIDERS:
         if pid in seen:
@@ -405,6 +420,48 @@ async def get_provider_status(
     return _get_provider_credential_status(db, current_user.id, provider_id)
 
 
+def _ensure_channel_account_for_marketplace(
+    db: Session,
+    user_id: str,
+    channel_type: ChannelType,
+    seller_id: str,
+    shop_domain_suffix: str,
+) -> ChannelAccount:
+    """Get or create a CONNECTED ChannelAccount for the user and marketplace channel."""
+    channel = db.query(Channel).filter(Channel.name == channel_type).first()
+    if not channel:
+        channel = Channel(name=channel_type, is_active=True)
+        db.add(channel)
+        db.commit()
+        db.refresh(channel)
+    account = (
+        db.query(ChannelAccount)
+        .filter(
+            ChannelAccount.channel_id == channel.id,
+            ChannelAccount.user_id == user_id,
+        )
+        .first()
+    )
+    if account:
+        account.seller_name = (seller_id or account.seller_name or "Seller").strip() or "Seller"
+        account.shop_domain = shop_domain_suffix
+        account.status = ChannelAccountStatus.CONNECTED
+        db.commit()
+        db.refresh(account)
+        return account
+    account = ChannelAccount(
+        channel_id=channel.id,
+        user_id=user_id,
+        seller_name=(seller_id or "Seller").strip() or "Seller",
+        shop_domain=shop_domain_suffix,
+        status=ChannelAccountStatus.CONNECTED,
+    )
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return account
+
+
 @router.post("/providers/{provider_id}/connect")
 async def connect_provider(
     provider_id: str,
@@ -436,7 +493,99 @@ async def connect_provider(
         db.add(cred)
         db.commit()
         db.refresh(cred)
+
+    # Ensure ChannelAccount exists for commerce marketplaces so sync/orders can run
+    seller_id = (body.get("seller_id") or body.get("sellerId") or "").strip()
+    if provider_id == "amazon":
+        _ensure_channel_account_for_marketplace(
+            db, str(current_user.id), ChannelType.AMAZON, seller_id, "amazon-in"
+        )
+    elif provider_id == "flipkart":
+        _ensure_channel_account_for_marketplace(
+            db, str(current_user.id), ChannelType.FLIPKART, seller_id, "flipkart"
+        )
+    elif provider_id == "myntra":
+        _ensure_channel_account_for_marketplace(
+            db, str(current_user.id), ChannelType.MYNTRA, seller_id, "myntra"
+        )
+
     return {"connected": True, "message": "Credentials saved"}
+
+
+def _get_user_channel_account(db: Session, user_id: str, channel_type: ChannelType) -> ChannelAccount | None:
+    """Get the current user's CONNECTED ChannelAccount for the given channel type."""
+    channel = db.query(Channel).filter(Channel.name == channel_type).first()
+    if not channel:
+        return None
+    return (
+        db.query(ChannelAccount)
+        .filter(
+            ChannelAccount.channel_id == channel.id,
+            ChannelAccount.user_id == user_id,
+            ChannelAccount.status == ChannelAccountStatus.CONNECTED,
+        )
+        .first()
+    )
+
+
+@router.post("/providers/amazon/sync")
+async def sync_amazon_orders(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Start order sync for the current user's connected Amazon account."""
+    account = _get_user_channel_account(db, str(current_user.id), ChannelType.AMAZON)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Amazon not connected. Connect Amazon in Integrations first.",
+        )
+    sync_engine = SyncEngine(db)
+    async def run():
+        await sync_engine.sync_orders(account)
+    background_tasks.add_task(run)
+    return {"message": "Order sync started", "accountId": account.id}
+
+
+@router.post("/providers/flipkart/sync")
+async def sync_flipkart_orders(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Start order sync for the current user's connected Flipkart account."""
+    account = _get_user_channel_account(db, str(current_user.id), ChannelType.FLIPKART)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Flipkart not connected. Connect Flipkart in Integrations first.",
+        )
+    sync_engine = SyncEngine(db)
+    async def run():
+        await sync_engine.sync_orders(account)
+    background_tasks.add_task(run)
+    return {"message": "Order sync started", "accountId": account.id}
+
+
+@router.post("/providers/myntra/sync")
+async def sync_myntra_orders(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Start order sync for the current user's connected Myntra account."""
+    account = _get_user_channel_account(db, str(current_user.id), ChannelType.MYNTRA)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Myntra not connected. Connect Myntra in Integrations first.",
+        )
+    sync_engine = SyncEngine(db)
+    async def run():
+        await sync_engine.sync_orders(account)
+    background_tasks.add_task(run)
+    return {"message": "Order sync started", "accountId": account.id}
 
 
 # IST for "yesterday" in manual sync

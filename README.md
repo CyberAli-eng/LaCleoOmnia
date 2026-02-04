@@ -25,6 +25,7 @@ Welcome to LaCleoOmnia! This is your complete order management solution.
 ### ✨ Key Features
 
 - ✅ **Multi-Store Management** - Connect multiple Shopify stores (OAuth or manual token)
+- ✅ **Commerce Channels** - Shopify, Amazon (SP-API), Flipkart, Myntra: connect and sync orders
 - ✅ **Order Processing** - Confirm, pack, ship orders with ease
 - ✅ **Inventory Tracking** - Multi-warehouse inventory; sync from Shopify (cached in DB)
 - ✅ **Shipping & Couriers** - Delhivery and Selloship: track shipments, RTO, costs; unified 30-min sync
@@ -32,13 +33,15 @@ Welcome to LaCleoOmnia! This is your complete order management solution.
 - ✅ **Real-time Sync** - Orders and inventory (Shopify webhooks + manual sync)
 - ✅ **Analytics** - Revenue, net profit, margin, RTO/loss, and reports
 
-### 🔗 Integration Methods
+### 🔗 Integrations (all have in-app Guides)
 
-**Shopify:** OAuth (recommended) or manual token — see [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md).
+| Section | Channels | How to connect |
+|--------|----------|-----------------|
+| **Commerce** | Shopify, Amazon, Flipkart, Myntra | OAuth (Shopify) or API credentials (Seller ID + tokens/keys). Use **Guide** on each card for step-by-step setup. |
+| **Marketing** | Meta Ads, Google Ads | Ad Account ID + Access Token (Meta) or OAuth2 credentials (Google). Used for daily ad-spend sync and CAC in profit. |
+| **Logistics** | Delhivery, Selloship | API key from partner dashboard. Shipment sync every 30 min. |
 
-**Logistics (Delhivery, Selloship):** Paste API key in Integrations → Logistics; sync shipments manually or every 30 min automatically.
-
-**Marketing (Meta Ads, Google Ads):** Add credentials in Integrations → Marketing Channels for blended CAC in profit.
+See **[INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md)** for detailed integration rules and troubleshooting for all channels.
 
 ### 📖 Need Help?
 

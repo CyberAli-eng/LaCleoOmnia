@@ -1,9 +1,15 @@
 """
-Credential encryption/decryption
+Credential encryption/decryption and provider credential access.
 """
-from cryptography.fernet import Fernet
+import json
 import base64
+from typing import Any
+
+from cryptography.fernet import Fernet
+from sqlalchemy.orm import Session
+
 from app.config import settings
+from app.models import ProviderCredential
 
 def get_encryption_key() -> bytes:
     """Get or generate encryption key"""
@@ -25,3 +31,24 @@ def decrypt_token(encrypted: str) -> str:
     f = Fernet(key)
     decrypted = f.decrypt(encrypted.encode())
     return decrypted.decode()
+
+
+def get_provider_credentials(db: Session, user_id: str, provider_id: str) -> dict[str, Any] | None:
+    """Return decrypted provider credentials dict for the given user and provider, or None."""
+    cred = (
+        db.query(ProviderCredential)
+        .filter(
+            ProviderCredential.user_id == user_id,
+            ProviderCredential.provider_id == provider_id,
+        )
+        .first()
+    )
+    if not cred or not cred.value_encrypted:
+        return None
+    try:
+        dec = decrypt_token(cred.value_encrypted)
+        if isinstance(dec, str) and dec.strip().startswith("{"):
+            return json.loads(dec)
+        return {"apiKey": dec}
+    except Exception:
+        return None

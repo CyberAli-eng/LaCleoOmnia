@@ -73,6 +73,7 @@ This 5-minute guide will get you up and running with LaCleoOmnia.
 ### What's Next?
 
 - **Explore Dashboard**: See your business overview and profit summary
+- **More channels**: Integrations → use the **Guide** button on Amazon, Flipkart, Myntra, Meta Ads, Google Ads, Delhivery, Selloship for step-by-step setup
 - **Connect couriers**: Integrations → Logistics → Delhivery / Selloship (paste API key) for tracking and RTO
 - **Manage Inventory**: Set up stock levels; sync from Shopify
 - **Set SKU costs**: Costs page → add product/packaging costs for accurate profit

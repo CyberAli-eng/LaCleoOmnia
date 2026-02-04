@@ -18,7 +18,12 @@ from app.models import (
 from app.services.shopify import ShopifyService
 from app.services.shopify_service import get_inventory as shopify_get_inventory
 from app.services.shopify_inventory_persist import persist_shopify_inventory
-from app.services.order_import import import_shopify_orders
+from app.services.order_import import (
+    import_shopify_orders,
+    import_amazon_orders,
+    import_flipkart_orders,
+    import_myntra_orders,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,22 +47,29 @@ class SyncEngine:
         self.db.refresh(sync_job)
 
         try:
-            if account.channel.name.value == "SHOPIFY":
+            channel_name = account.channel.name.value if hasattr(account.channel.name, "value") else str(account.channel.name)
+            if channel_name == "SHOPIFY":
                 result = await import_shopify_orders(self.db, account)
-
-                sync_job.status = SyncJobStatus.SUCCESS
-                sync_job.finished_at = datetime.now(timezone.utc)
-                sync_job.records_processed = result.get("imported", 0)
-                sync_job.records_failed = result.get("failed", 0)
-
-                log = SyncLog(
-                    sync_job_id=sync_job.id,
-                    level=LogLevel.INFO,
-                    message=f"Order sync completed: {result.get('imported', 0)} imported, {result.get('failed', 0)} failed",
-                )
-                self.db.add(log)
+            elif channel_name == "AMAZON":
+                result = await import_amazon_orders(self.db, account)
+            elif channel_name == "FLIPKART":
+                result = await import_flipkart_orders(self.db, account)
+            elif channel_name == "MYNTRA":
+                result = await import_myntra_orders(self.db, account)
             else:
-                raise ValueError(f"Unsupported channel: {account.channel.name.value}")
+                raise ValueError(f"Unsupported channel: {channel_name}")
+
+            sync_job.status = SyncJobStatus.SUCCESS
+            sync_job.finished_at = datetime.now(timezone.utc)
+            sync_job.records_processed = result.get("imported", 0)
+            sync_job.records_failed = result.get("errors", 0) or result.get("failed", 0)
+
+            log = SyncLog(
+                sync_job_id=sync_job.id,
+                level=LogLevel.INFO,
+                message=f"Order sync completed: {result.get('imported', 0)} imported, {result.get('errors', result.get('failed', 0))} errors",
+            )
+            self.db.add(log)
 
             self.db.commit()
             return {

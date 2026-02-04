@@ -383,6 +383,41 @@ If you used manual token, webhooks will register if `WEBHOOK_BASE_URL` is config
 
 ---
 
+## All Integrations Overview
+
+Every channel in **Dashboard → Integrations** has a **Guide** button with step-by-step setup. Below is a concise reference for all supported channels and integration rules.
+
+### Commerce & Channels
+
+| Channel   | How to connect | What you need | Integration rules |
+|-----------|----------------|---------------|-------------------|
+| **Shopify** | OAuth (recommended) or manual token | Store domain; for OAuth: App API Key + Secret in "Shopify App" setup first | Scopes: read_orders, write_orders, read_products, write_products, read_inventory, write_inventory, read_locations. App URL = your app base URL; Redirect URI = `your_app_url/auth/shopify/callback`. |
+| **Amazon** | API key (SP-API) | Seller ID, LWA Refresh Token, Client ID, Client Secret, optional Marketplace ID (default India: A21TJRUUN4KGV) | Use SP-API authorization (website or self-auth) to get Refresh Token. LWA tokens from Developer Central. Orders sync via Orders API v0. |
+| **Flipkart** | API key (OAuth2) | Seller ID, Client ID, Client Secret | OAuth2 client credentials; scope `Seller_Api`. Get credentials from Seller Hub → API / Developer. Order sync uses Orders Search API. |
+| **Myntra** | API key | Partner ID, API Key / Token | Partner portal (e.g. mmip.myntrainfo.com). PPMP API v4 / Omni API v4; credentials from your Myntra partner onboarding. |
+
+### Marketing Channels (Ad Spend for CAC)
+
+| Channel     | How to connect | What you need | Integration rules |
+|-------------|----------------|---------------|-------------------|
+| **Meta Ads** | API key | Ad Account ID, Access Token | Business Settings → System Users → Generate token. Permissions: ads_management, ads_read, business_management. Token shown once; copy immediately. Ad spend synced daily at 00:30 IST. |
+| **Google Ads** | API key (OAuth2) | Developer Token, Client ID, Client Secret, Refresh Token, optional Customer ID | Google Cloud: enable Google Ads API; create OAuth2 credentials. Google Ads → Tools → API Center for Developer Token. Use OAuth flow for Refresh Token. Ad spend synced daily. |
+
+### Logistics & Supply Chain
+
+| Channel     | How to connect | What you need | Integration rules |
+|-------------|----------------|---------------|-------------------|
+| **Delhivery** | API key | API Key | Delhivery One → Settings → API Setup. "Request Live API Token"; token visible 5 minutes only. New token invalidates the previous one. Shipment sync every 30 minutes. |
+| **Selloship** | API key | API Key | Credentials from Selloship account manager or partner portal. Forward shipments, AWB generation, tracking. Shipment sync every 30 minutes. |
+
+### Using the in-app Guide
+
+- On **Integrations**, each card has a **Guide** button.
+- Click it to open step-by-step instructions (and, for Shopify, a short setup guide).
+- Follow the steps, then fill the form and click **Connect** (or **Sync** after connecting).
+
+---
+
 ## Support
 
 ### Need Help?

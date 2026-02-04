@@ -2,6 +2,8 @@
 
 This document summarizes issues found during re-examination of the LaCleoOmnia project and their status.
 
+**Integration documentation:** All 8 channels (Shopify, Amazon, Flipkart, Myntra, Meta Ads, Google Ads, Delhivery, Selloship) have in-app **Guide** buttons with step-by-step setup. Backend catalog in `apps/api-python/app/routers/integrations.py` defines `setupSteps` (and optionally `setupGuide`) per provider. See [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md) for full integration rules and tables.
+
 ---
 
 ## Critical (fixed)
