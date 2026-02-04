@@ -197,11 +197,16 @@ function IntegrationsPageContent() {
     const body: Record<string, string> = {};
     for (const f of fields) {
       const val = connectFormData[formKey(provider.id, f.key)]?.trim();
-      if (f.key && val) body[f.key] = val;
+      if (!f.key) continue;
+      if (!val) {
+        setStatus(`Please enter ${f.label || f.key}. All fields are required.`);
+        setStatusType("error");
+        return;
+      }
+      body[f.key] = val;
     }
     if (Object.keys(body).length === 0) {
-      const firstKey = provider.connectBodyKey ?? fields[0]?.key;
-      setStatus(`Please enter ${firstKey ? String(firstKey) : "credentials"}`);
+      setStatus("Please fill in all required fields.");
       setStatusType("error");
       return;
     }
@@ -373,12 +378,42 @@ function IntegrationsPageContent() {
               const primaryBtnClass =
                 PRIMARY_BUTTON_CLASSES[provider.color] ?? "bg-slate-600 hover:bg-slate-700 text-white";
 
+              const canEditCredentials =
+                provider.connectType === "api_key" &&
+                provider.connectEndpoint &&
+                (provider.connectFormFields?.length ?? 0) > 0;
+              const canEditShopifySetup =
+                provider.id === "SHOPIFY" &&
+                provider.setupStatusEndpoint &&
+                (statusByProvider[provider.id]?.setupConfigured === true || isConnected);
+
               return (
                 <div
                   key={provider.id}
-                  className="rounded-xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm hover:shadow-md hover:border-slate-300/80 transition-all duration-200 flex flex-col"
+                  className="rounded-xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm hover:shadow-md hover:border-slate-300/80 transition-all duration-200 flex flex-col relative"
                 >
-                  <div className="flex items-start justify-between gap-3 mb-4">
+                  {((isConnected && canEditCredentials) || canEditShopifySetup) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (canEditShopifySetup) {
+                          setShowSetupForm(showSetupForm === provider.id ? null : provider.id);
+                          setShowConnectForm(null);
+                        } else {
+                          setShowConnectForm(showConnectForm === provider.id ? null : provider.id);
+                          setShowSetupForm(null);
+                        }
+                      }}
+                      className="absolute top-4 right-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                      title="Edit credentials"
+                      aria-label="Edit credentials"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  )}
+                  <div className="flex items-start justify-between gap-3 mb-4 pr-8">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-2xl">
                         {provider.icon}
@@ -546,10 +581,13 @@ function IntegrationsPageContent() {
                     provider.connectType === "api_key" &&
                     (provider.connectFormFields?.length ?? 0) > 0 && (
                       <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
+                        <p className="text-xs text-slate-500">
+                          {isConnected ? "Update credentials below. All fields are required." : "Enter your credentials. All fields are required."}
+                        </p>
                         {(provider.connectFormFields ?? []).map((field) => (
                           <div key={field.key}>
                             <label className="block text-xs font-medium text-slate-700 mb-1">
-                              {field.label}
+                              {field.label} <span className="text-red-500">*</span>
                             </label>
                             <input
                               type={field.type ?? "text"}
@@ -571,7 +609,7 @@ function IntegrationsPageContent() {
                             disabled={loading === `connect-${provider.id}`}
                             className="flex-1 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
                           >
-                            {loading === `connect-${provider.id}` ? "Connecting..." : "Save"}
+                            {loading === `connect-${provider.id}` ? "Saving..." : isConnected ? "Update credentials" : "Save"}
                           </button>
                           <button
                             onClick={() => {

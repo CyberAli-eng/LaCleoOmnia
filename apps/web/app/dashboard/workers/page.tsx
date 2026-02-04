@@ -25,6 +25,8 @@ const CHANNEL_ICONS: Record<string, string> = {
   AMAZON: "📦",
   FLIPKART: "🛒",
   MYNTRA: "👕",
+  selloship: "📦",
+  delhivery: "🚚",
 };
 
 export default function WorkersPage() {
@@ -81,6 +83,23 @@ export default function WorkersPage() {
       await loadJobs();
     } catch (err: any) {
       setMessage({ text: err?.message ?? "Order sync failed.", type: "error" });
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const triggerSyncShipments = async (channelId: string, channelName: string) => {
+    setLoading(`shipments-${channelId}`);
+    setMessage(null);
+    try {
+      const res = await authFetch("/shipments/sync", { method: "POST" }) as { message?: string; synced?: number };
+      setMessage({
+        text: res?.message ?? `Synced ${res?.synced ?? 0} shipments.`,
+        type: "success",
+      });
+      await loadJobs();
+    } catch (err: any) {
+      setMessage({ text: err?.message ?? "Shipment sync failed.", type: "error" });
     } finally {
       setLoading(null);
     }
@@ -191,7 +210,9 @@ export default function WorkersPage() {
               const icon = CHANNEL_ICONS[ch.id] ?? "📌";
               const ordersLoading = loading === `orders-${ch.id}`;
               const invLoading = loading === `inventory-${ch.id}`;
+              const shipmentsLoading = loading === `shipments-${ch.id}`;
               const hasInventorySync = ch.id === "SHOPIFY";
+              const isLogisticsOnly = ["selloship", "delhivery"].includes(ch.id) && !ch.accountId;
               return (
                 <div
                   key={ch.id}
@@ -207,14 +228,25 @@ export default function WorkersPage() {
                     </div>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <button
-                      type="button"
-                      onClick={() => triggerSyncOrders(ch.id, ch.accountId, ch.name)}
-                      disabled={!!loading}
-                      className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {ordersLoading ? "Starting…" : "Sync orders"}
-                    </button>
+                    {isLogisticsOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => triggerSyncShipments(ch.id, ch.name)}
+                        disabled={!!loading}
+                        className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {shipmentsLoading ? "Syncing…" : "Sync shipments"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => triggerSyncOrders(ch.id, ch.accountId, ch.name)}
+                        disabled={!!loading}
+                        className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {ordersLoading ? "Starting…" : "Sync orders"}
+                      </button>
+                    )}
                     {hasInventorySync && (
                       <button
                         type="button"

@@ -244,7 +244,7 @@ def _get_integration_catalog() -> dict:
                         "statusEndpoint": "/integrations/providers/selloship/status",
                         "connectEndpoint": "/integrations/providers/selloship/connect",
                         "connectBodyKey": "apiKey",
-                        "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "From Selloship team or partner portal"}],
+                        "connectFormFields": [{"key": "apiKey", "label": "API Key", "type": "password", "placeholder": "Token from auth (e.g. 6981e432... or full \"token 6981e432...\")"}],
                         "setupSteps": [
                             {"step": 1, "title": "Contact Selloship", "description": "Get API credentials from your Selloship account manager or partner portal. Selloship is a shipping aggregator; integration is typically enabled per account."},
                             {"step": 2, "title": "Get API key or token", "description": "Obtain your API key (or username/password for token-based auth). Configure forward shipment options and AWB generation as per your contract."},
@@ -320,6 +320,46 @@ async def get_connected_summary(
 CREDENTIAL_PROVIDER_ENV_KEYS: dict[str, str] = {"delhivery": "DELHIVERY_API_KEY", "selloship": "SELLOSHIP_API_KEY"}
 # Providers allowed for generic /providers/{id}/status and /providers/{id}/connect (catalog-driven).
 ALLOWED_CREDENTIAL_PROVIDERS: set[str] = {"delhivery", "selloship", "meta_ads", "google_ads", "amazon", "flipkart", "myntra"}
+
+# Required credential keys per provider (for validation). Keys not listed are optional.
+PROVIDER_REQUIRED_KEYS: dict[str, list[str]] = {
+    "amazon": ["seller_id", "refresh_token", "client_id", "client_secret"],
+    "flipkart": ["seller_id", "client_id", "client_secret"],
+    "myntra": ["seller_id", "apiKey"],
+    "meta_ads": ["ad_account_id", "access_token"],
+    "google_ads": ["developer_token", "client_id", "client_secret", "refresh_token"],
+    "delhivery": ["apiKey"],
+    "selloship": ["apiKey"],
+}
+
+
+def _validate_provider_credentials(provider_id: str, body: dict[str, Any]) -> None:
+    """Validate required keys and basic format. Raises HTTPException on failure."""
+    required = PROVIDER_REQUIRED_KEYS.get(provider_id)
+    if not required:
+        return
+    missing = [k for k in required if not (body.get(k) or body.get(k.replace("_", "")) or "").strip()]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Missing required fields: {', '.join(missing)}. Please enter all credentials in the correct format.",
+        )
+    # Basic format: seller_id / ids should not be only spaces or too short
+    seller_id = (body.get("seller_id") or body.get("sellerId") or "").strip()
+    if provider_id in ("amazon", "flipkart", "myntra") and not seller_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Seller ID / Partner ID is required and cannot be empty.",
+        )
+    # Token/key fields should have minimum length
+    token_keys = ["refresh_token", "client_secret", "apiKey", "access_token"]
+    for key in token_keys:
+        val = (body.get(key) or "").strip()
+        if key in required and len(val) < 4:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{key}' must be at least 4 characters. Please check the value.",
+            )
 
 
 def _get_shopify_app_credentials(db: Session, user_id: str) -> dict | None:
@@ -469,11 +509,12 @@ async def connect_provider(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Save API key/credentials for the given provider. Body keys come from catalog connectFormFields (e.g. apiKey, ad_account_id, access_token)."""
+    """Save API key/credentials for the given provider. Body keys come from catalog connectFormFields. Validates required fields and format before saving."""
     if provider_id not in ALLOWED_CREDENTIAL_PROVIDERS:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
     if not body or not any(str(v).strip() for v in body.values() if v is not None):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one credential value is required")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one credential value is required.")
+    _validate_provider_credentials(provider_id, body)
     value_json = json.dumps(body)
     encrypted = encrypt_token(value_json)
     cred = db.query(ProviderCredential).filter(
