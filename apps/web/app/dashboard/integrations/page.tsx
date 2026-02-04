@@ -387,7 +387,8 @@ function IntegrationsPageContent() {
                 (provider.setupConnectEndpoint || (provider.setupFormFields?.length ?? 0) > 0);
               const canEditWithSetup =
                 hasSetupForm && (statusByProvider[provider.id]?.setupConfigured === true || isConnected);
-              const showEditPencil = isConnected && (hasConnectForm || canEditWithSetup);
+              // Show edit pencil on every card that has a connect or setup form (so users can add/edit credentials anytime)
+              const showEditPencil = hasConnectForm || hasSetupForm;
 
               return (
                 <div
@@ -398,10 +399,10 @@ function IntegrationsPageContent() {
                     <button
                       type="button"
                       onClick={() => {
-                        if (canEditWithSetup) {
+                        if (hasSetupForm && (provider.id === "SHOPIFY" || canEditWithSetup)) {
                           setShowSetupForm(showSetupForm === provider.id ? null : provider.id);
                           setShowConnectForm(null);
-                        } else {
+                        } else if (hasConnectForm) {
                           setShowConnectForm(showConnectForm === provider.id ? null : provider.id);
                           setShowSetupForm(null);
                         }

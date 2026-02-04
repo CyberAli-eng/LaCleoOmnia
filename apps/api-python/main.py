@@ -292,11 +292,11 @@ async def startup_ad_spend_sync() -> None:
 
 
 def _get_frontend_url() -> str:
-    """Redirect URL after OAuth - no hardcoding; use env or allowed origins."""
+    """Redirect URL after OAuth. Prefer ALLOWED_ORIGINS or FRONTEND_URL; fallback to LaCleoOmnia dashboard."""
     if settings.ALLOWED_ORIGINS:
         return settings.ALLOWED_ORIGINS[0].rstrip("/")
     if settings.IS_CLOUD:
-        return os.getenv("FRONTEND_URL") or os.getenv("NEXT_PUBLIC_URL") or "https://lacleo-web.vercel.app"
+        return os.getenv("FRONTEND_URL") or os.getenv("NEXT_PUBLIC_URL") or "https://la-cleo-omnia-web.vercel.app"
     return os.getenv("FRONTEND_URL") or "http://localhost:3000"
 
 
@@ -397,16 +397,12 @@ async def auth_shopify_callback(
                         api_secret = (data.get("apiSecret") or "").strip()
         except (JWTError, Exception):
             pass
-    # If state had a user_id but that user has no Shopify app creds, do NOT use env fallback:
-    # each user's app (e.g. Sadaf's) must use that user's stored API key/secret.
-    if user_id and (not api_key or not api_secret):
-        logger.warning("Shopify OAuth: user %s has no shopify_app credentials in Integrations", user_id)
-        return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=shopify_creds_required")
+    # No .env fallback: credentials must come from the user's Integrations (ProviderCredential).
     if not api_key or not api_secret:
-        api_key = getattr(settings, "SHOPIFY_API_KEY", None) or ""
-        api_secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
-    if not api_key or not api_secret:
-        logger.warning("Shopify OAuth: no credentials (state or env)")
+        if user_id:
+            logger.warning("Shopify OAuth: user %s has no shopify_app credentials in Integrations", user_id)
+            return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=shopify_creds_required")
+        logger.warning("Shopify OAuth: no credentials in state")
         return RedirectResponse(url=redirect_fail)
 
     oauth_service = ShopifyOAuthService(api_key=api_key, api_secret=api_secret)

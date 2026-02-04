@@ -66,7 +66,7 @@ def _parse_channel_account_creds(account: ChannelAccount, db: Session, user_id: 
         except Exception:
             pass
     if not secret:
-        secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
+        raise ValueError("Shopify App Secret not found. Add your app API Key and API Secret in Integrations → Shopify → Configure.")
     return shop, token, secret
 
 
@@ -205,7 +205,8 @@ async def shopify_webhook_receive(
         except Exception:
             pass
     if not secret:
-        secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
+        logger.warning("Shopify webhook: no app secret for shop=%s (add credentials in Integrations)", shop_domain)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="App secret not found for this shop. Connect the store in Integrations with your Shopify App credentials.")
     if not verify_webhook_hmac(raw_body, hmac_header, secret):
         logger.warning("Shopify webhook: HMAC verification failed for shop=%s topic=%s", shop_domain, topic)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook signature")

@@ -74,13 +74,13 @@ def _get_integration_catalog() -> dict:
                             {"key": "apiKey", "label": "API Key (Client ID)", "type": "text", "placeholder": "From Shopify Partner app"},
                             {"key": "apiSecret", "label": "API Secret (Client secret)", "type": "password", "placeholder": "From Shopify Partner app"}
                         ],
-                        "setupGuide": "Create an app in Shopify Admin (Apps → Develop apps → Create an app). In Configuration: (1) App URL = your FRONTEND URL + /auth/shopify (e.g. https://your-dashboard.vercel.app/auth/shopify). (2) Allowed redirection URL(s) = your API URL + /auth/shopify/callback (e.g. https://your-api.onrender.com/auth/shopify/callback). Copy API key and API secret from Client credentials and paste them in the Shopify App setup form below, then connect via OAuth.",
+                        "setupGuide": "LaCleoOmnia uses your dashboard URL and API URL. In Shopify set App URL to https://la-cleo-omnia-web.vercel.app/auth/shopify and Allowed redirection URL to https://lacleoomnia.onrender.com/auth/shopify/callback. Then add your app API Key and Secret in this card (pencil or Configure) and connect via OAuth. No .env required.",
                         "setupSteps": [
-                            {"step": 1, "title": "Create a Shopify app", "description": "In Shopify Admin go to Apps → Develop apps → Create an app (or use an existing custom app). Each user can use their own app or a shared one."},
-                            {"step": 2, "title": "Set App URL", "description": "In Configuration set App URL to your FRONTEND (dashboard) URL + /auth/shopify. Example: if the dashboard is at https://lacleo-web.vercel.app then use https://lacleo-web.vercel.app/auth/shopify. When merchants install the app, Shopify sends them here; you will be asked to log in if needed, then redirected to authorize the store."},
-                            {"step": 3, "title": "Set Allowed redirection URL(s)", "description": "In Configuration add one Allowed redirection URL: your API (backend) URL + /auth/shopify/callback. Example: https://lacleoomnia.onrender.com/auth/shopify/callback. This must be the API server that handles OAuth, not the frontend. No trailing slash."},
-                            {"step": 4, "title": "Add credentials in this dashboard", "description": "Under Client credentials in Shopify copy the API key (Client ID) and API secret (Client secret). In the Shopify card on this page click the pencil (Edit) or Configure, then paste API Key and API Secret and save."},
-                            {"step": 5, "title": "Connect your store", "description": "Either: (A) In Shopify Admin click Install app — you will be sent to the dashboard, log in if needed, then authorize. Or (B) On this page click Connect via OAuth and enter your store domain (e.g. mystore or mystore.myshopify.com). Request scopes: read_orders, write_orders, read_products, write_products, read_inventory, write_inventory, read_locations."},
+                            {"step": 1, "title": "Create a new app in Shopify", "description": "In your Shopify Admin go to Settings → Apps and sales channels → Develop apps → Create an app (or Create app). Give it a name (e.g. LaCleoOmnia). Each user (e.g. Shaiz, Sadaf) can create their own app and add its credentials here."},
+                            {"step": 2, "title": "Set App URL (exact value)", "description": "Open your app → Configuration. In App URL enter exactly: https://la-cleo-omnia-web.vercel.app/auth/shopify (no trailing slash). This is the LaCleoOmnia dashboard. When you install the app from Shopify, you will be sent here to log in and authorize."},
+                            {"step": 3, "title": "Set Allowed redirection URL(s) (exact value)", "description": "In the same Configuration page, under Allowed redirection URL(s), add exactly one URL: https://lacleoomnia.onrender.com/auth/shopify/callback (no trailing slash). This is the LaCleoOmnia API. Shopify will send the authorization code here after you approve."},
+                            {"step": 4, "title": "Copy Client credentials and add them here", "description": "In Shopify, open your app → Client credentials. Copy the Client ID and Client secret. In this dashboard, open the Shopify card above → click the pencil icon (top-right) or Configure → paste Client ID into API Key and Client secret into API Secret → Save. No .env or server config needed."},
+                            {"step": 5, "title": "When to install and how to connect", "description": "Option A — Install from Shopify: In your app in Shopify, click Install app (or Test your app). You will be redirected to the dashboard; log in if needed, then you will be sent to Shopify to approve. Option B — Connect from dashboard: On this page click Connect via OAuth, enter your store domain (e.g. mystore or mystore.myshopify.com), then approve in Shopify. Required scopes: read_orders, write_orders, read_products, write_products, read_inventory, write_inventory, read_locations."},
                         ],
                         "actions": [
                             {"id": "sync", "label": "Sync Shopify", "method": "POST", "endpoint": "/integrations/shopify/sync", "primary": True},
@@ -771,11 +771,9 @@ async def shopify_register_webhooks(
         )
     secret = getattr(integration, "_app_secret", None) or ""
     if not secret:
-        secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
-    if not secret:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Shopify App Secret is required. Add your Shopify App credentials in Integrations (Shopify App setup), or ask your administrator to set SHOPIFY_API_SECRET.",
+            detail="Shopify App credentials are required. In Channels → Shopify click the pencil (Edit) or Configure, add your app API Key and API Secret, then connect your store via OAuth. No .env needed.",
         )
     try:
         service = ShopifyService()

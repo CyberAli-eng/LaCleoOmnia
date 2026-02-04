@@ -220,7 +220,7 @@ async def shopify_oauth_install(
     """
     logger.info(f"OAuth install request from user {current_user.id} for shop: {shop}")
     
-    # Prefer user's Shopify App credentials from DB (Integrations setup); fallback to env
+    # Use only the logged-in user's Shopify App credentials from Integrations (no .env fallback)
     api_key, api_secret = None, None
     cred = db.query(ProviderCredential).filter(
         ProviderCredential.user_id == current_user.id,
@@ -236,12 +236,9 @@ async def shopify_oauth_install(
         except Exception:
             pass
     if not api_key or not api_secret:
-        api_key = getattr(settings, "SHOPIFY_API_KEY", None) or ""
-        api_secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""
-    if not api_key or not api_secret:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Add your Shopify App API Key and Secret in Integrations first (Shopify App setup), or set SHOPIFY_API_KEY and SHOPIFY_API_SECRET in .env"
+            detail="Add your Shopify App API Key and Secret in Integrations first: open the Shopify card → click the pencil (Edit) or Configure → paste API Key (Client ID) and API Secret (Client secret) from your Shopify app → Save. No .env required."
         )
     
     scopes = getattr(settings, "SHOPIFY_SCOPES", "") or ""
@@ -272,38 +269,24 @@ async def shopify_oauth_install(
         
         logger.info(f"Generated state token for user {current_user.id}, shop {normalized_shop}")
         
-        # Build redirect URI dynamically - validate and prevent open redirects
+        # Build redirect URI: use API base URL (no dependency on request.url so OAuth works for all users)
         if not redirect_uri:
-            # Try to get from request first
-            base_url = None
-            try:
-                if request and hasattr(request, 'url') and request.url:
-                    scheme = request.url.scheme
-                    host = request.url.hostname
-                    port = request.url.port
-                    if port and port not in [80, 443]:
-                        base_url = f"{scheme}://{host}:{port}"
-                    else:
-                        base_url = f"{scheme}://{host}"
-            except:
-                pass
-            
-            # Fallback to WEBHOOK_BASE_URL or auto-detect from environment
+            base_url = (getattr(settings, "WEBHOOK_BASE_URL", None) or "").strip().rstrip("/")
+            if not base_url and settings.IS_CLOUD:
+                base_url = (
+                    os.getenv("RENDER_EXTERNAL_URL") or
+                    os.getenv("RAILWAY_PUBLIC_DOMAIN") or
+                    (os.getenv("HEROKU_APP_NAME") and f"https://{os.getenv('HEROKU_APP_NAME')}.herokuapp.com") or
+                    ""
+                )
             if not base_url:
-                base_url = settings.WEBHOOK_BASE_URL
-                if not base_url:
-                    # Auto-detect from environment variables
-                    if settings.IS_CLOUD:
-                        base_url = (
-                            os.getenv("RENDER_EXTERNAL_URL") or
-                            os.getenv("RAILWAY_PUBLIC_DOMAIN") or
-                            os.getenv("VERCEL_URL") or
-                            (os.getenv("HEROKU_APP_NAME") and f"https://{os.getenv('HEROKU_APP_NAME')}.herokuapp.com") or
-                            None
-                        )
-                    if not base_url:
-                        base_url = "http://localhost:8000"
-            
+                try:
+                    if request and hasattr(request, "url") and request.url:
+                        base_url = f"{request.url.scheme}://{request.url.netloc}".rstrip("/")
+                except Exception:
+                    pass
+            if not base_url:
+                base_url = "http://localhost:8000"
             redirect_uri = f"{base_url}/auth/shopify/callback"
         else:
             # Validate provided redirect_uri to prevent open redirects
