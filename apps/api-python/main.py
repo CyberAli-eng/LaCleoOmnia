@@ -373,119 +373,125 @@ async def auth_shopify_callback(
     redirect_fail = f"{frontend_url}/dashboard/integrations?error=oauth_failed"
     redirect_ok = f"{frontend_url}/dashboard/integrations?shopify=connected"
 
-    if not raw_query or not shop or not code:
-        return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=missing_params" if not raw_query else f"{frontend_url}/dashboard/integrations?error=missing_shop_or_code")
-
-    # Resolve OAuth credentials: from state (user's DB credentials) or from env
-    api_key = None
-    api_secret = None
-    user_id = None
-    if state:
-        try:
-            state_data = jwt.decode(state, settings.JWT_SECRET, algorithms=[settings.AUTH_ALGORITHM])
-            user_id = state_data.get("user_id")
-            if user_id:
-                cred = db.query(ProviderCredential).filter(
-                    ProviderCredential.user_id == user_id,
-                    ProviderCredential.provider_id == "shopify_app",
-                ).first()
-                if cred and cred.value_encrypted:
-                    dec = decrypt_token(cred.value_encrypted)
-                    data = json.loads(dec) if isinstance(dec, str) and dec.strip().startswith("{") else {}
-                    if isinstance(data, dict) and data.get("apiKey") and data.get("apiSecret"):
-                        api_key = (data.get("apiKey") or "").strip()
-                        api_secret = (data.get("apiSecret") or "").strip()
-        except (JWTError, Exception):
-            pass
-    # No .env fallback: credentials must come from the user's Integrations (ProviderCredential).
-    if not api_key or not api_secret:
-        if user_id:
-            logger.warning("Shopify OAuth: user %s has no shopify_app credentials in Integrations", user_id)
-            return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=shopify_creds_required")
-        logger.warning("Shopify OAuth: no credentials in state")
-        return RedirectResponse(url=redirect_fail)
-
-    oauth_service = ShopifyOAuthService(api_key=api_key, api_secret=api_secret)
-    if not oauth_service.verify_hmac(raw_query):
+    def _fail(msg: str) -> RedirectResponse:
+        logger.warning("Shopify OAuth callback: %s", msg)
         return RedirectResponse(url=redirect_fail)
 
     try:
-        normalized_shop = oauth_service.normalize_shop_domain(shop)
-    except ValueError as e:
-        logger.warning("Invalid shop domain: %s", e)
-        return RedirectResponse(url=redirect_fail)
-
-    try:
-        token_data = await oauth_service.exchange_code_for_token(normalized_shop, code)
-    except Exception as e:
-        logger.exception("Token exchange failed: %s", e)
-        return RedirectResponse(url=redirect_fail)
-
-    access_token = token_data.get("access_token")
-    scopes = token_data.get("scope") or ""
-    if not access_token:
-        logger.error("No access_token in Shopify response")
-        return RedirectResponse(url=redirect_fail)
-
-    # Save ShopifyIntegration (for sync + webhook HMAC)
-    existing_int = db.query(ShopifyIntegration).filter(
-        ShopifyIntegration.shop_domain == normalized_shop,
-    ).first()
-    app_secret_encrypted = encrypt_token(api_secret) if api_secret else None
-    if existing_int:
-        existing_int.access_token = access_token
-        existing_int.scopes = scopes
-        existing_int.app_secret_encrypted = app_secret_encrypted
-        logger.info("Updated Shopify integration for shop: %s", normalized_shop)
-    else:
-        db.add(ShopifyIntegration(
-            shop_domain=normalized_shop,
-            access_token=access_token,
-            scopes=scopes,
-            app_secret_encrypted=app_secret_encrypted,
-        ))
-        logger.info("Created Shopify integration for shop: %s", normalized_shop)
-
-    # Save ChannelAccount if we have user_id (from state)
-    if user_id:
-        user = db.query(User).filter(User.id == user_id).first()
-        if user:
-            channel = db.query(Channel).filter(Channel.name == ChannelType.SHOPIFY).first()
-            if not channel:
-                channel = Channel(name=ChannelType.SHOPIFY, is_active=True)
-                db.add(channel)
-                db.flush()
-            from datetime import datetime, timezone
-            acc = db.query(ChannelAccount).filter(
-                ChannelAccount.channel_id == channel.id,
-                ChannelAccount.user_id == user_id,
-                ChannelAccount.shop_domain == normalized_shop,
-            ).first()
-            shop_name = normalized_shop
-            if acc:
-                acc.access_token = encrypt_token(access_token)
-                acc.status = ChannelAccountStatus.CONNECTED
-            else:
-                acc = ChannelAccount(
-                    channel_id=channel.id,
-                    user_id=user_id,
-                    seller_name=shop_name,
-                    shop_domain=normalized_shop,
-                    access_token=encrypt_token(access_token),
-                    status=ChannelAccountStatus.CONNECTED,
-                )
-                db.add(acc)
-            audit = AuditLog(
-                user_id=user_id,
-                action=AuditLogAction.INTEGRATION_CONNECTED,
-                entity_type="Integration",
-                entity_id=acc.id,
-                details={"channel": "SHOPIFY", "shop_domain": normalized_shop},
+        if not raw_query or not shop or not code:
+            return RedirectResponse(
+                url=f"{frontend_url}/dashboard/integrations?error=missing_params" if not raw_query else f"{frontend_url}/dashboard/integrations?error=missing_shop_or_code"
             )
-            db.add(audit)
 
-    db.commit()
-    return RedirectResponse(url=redirect_ok)
+        api_key = None
+        api_secret = None
+        user_id = None
+        if state:
+            try:
+                state_data = jwt.decode(state, settings.JWT_SECRET, algorithms=[settings.AUTH_ALGORITHM])
+                user_id = state_data.get("user_id")
+                if user_id is not None:
+                    user_id = str(user_id).strip()
+                if user_id:
+                    cred = db.query(ProviderCredential).filter(
+                        ProviderCredential.user_id == user_id,
+                        ProviderCredential.provider_id == "shopify_app",
+                    ).first()
+                    if cred and cred.value_encrypted:
+                        dec = decrypt_token(cred.value_encrypted)
+                        data = json.loads(dec) if isinstance(dec, str) and dec.strip().startswith("{") else {}
+                        if isinstance(data, dict) and data.get("apiKey") and data.get("apiSecret"):
+                            api_key = (data.get("apiKey") or "").strip()
+                            api_secret = (data.get("apiSecret") or "").strip()
+            except (JWTError, Exception) as e:
+                logger.debug("State decode or cred load: %s", e)
+
+        if not api_key or not api_secret:
+            if user_id:
+                return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=shopify_creds_required")
+            return _fail("no credentials in state")
+
+        oauth_service = ShopifyOAuthService(api_key=api_key, api_secret=api_secret)
+        if not oauth_service.verify_hmac(raw_query):
+            return _fail("HMAC verification failed")
+
+        try:
+            normalized_shop = oauth_service.normalize_shop_domain(shop)
+        except ValueError as e:
+            return _fail(f"invalid shop domain: {e}")
+
+        try:
+            token_data = await oauth_service.exchange_code_for_token(normalized_shop, code)
+        except Exception as e:
+            logger.exception("Token exchange failed: %s", e)
+            return RedirectResponse(url=redirect_fail)
+
+        access_token = token_data.get("access_token")
+        scopes = (token_data.get("scope") or "") or ""
+        if access_token is None or (isinstance(access_token, str) and not access_token.strip()):
+            return _fail("no access_token in Shopify response")
+        access_token = str(access_token).strip()
+
+        existing_int = db.query(ShopifyIntegration).filter(
+            ShopifyIntegration.shop_domain == normalized_shop,
+        ).first()
+        app_secret_encrypted = encrypt_token(api_secret) if api_secret else None
+        if existing_int:
+            existing_int.access_token = access_token
+            existing_int.scopes = scopes
+            existing_int.app_secret_encrypted = app_secret_encrypted
+            logger.info("Updated Shopify integration for shop: %s", normalized_shop)
+        else:
+            db.add(ShopifyIntegration(
+                shop_domain=normalized_shop,
+                access_token=access_token,
+                scopes=scopes,
+                app_secret_encrypted=app_secret_encrypted,
+            ))
+            logger.info("Created Shopify integration for shop: %s", normalized_shop)
+
+        if user_id:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                channel = db.query(Channel).filter(Channel.name == ChannelType.SHOPIFY).first()
+                if not channel:
+                    channel = Channel(name=ChannelType.SHOPIFY, is_active=True)
+                    db.add(channel)
+                    db.flush()
+                acc = db.query(ChannelAccount).filter(
+                    ChannelAccount.channel_id == channel.id,
+                    ChannelAccount.user_id == user_id,
+                    ChannelAccount.shop_domain == normalized_shop,
+                ).first()
+                shop_name = normalized_shop
+                if acc:
+                    acc.access_token = encrypt_token(access_token)
+                    acc.status = ChannelAccountStatus.CONNECTED
+                else:
+                    acc = ChannelAccount(
+                        channel_id=channel.id,
+                        user_id=user_id,
+                        seller_name=shop_name,
+                        shop_domain=normalized_shop,
+                        access_token=encrypt_token(access_token),
+                        status=ChannelAccountStatus.CONNECTED,
+                    )
+                    db.add(acc)
+                    db.flush()
+                audit = AuditLog(
+                    user_id=user_id,
+                    action=AuditLogAction.INTEGRATION_CONNECTED,
+                    entity_type="Integration",
+                    entity_id=acc.id,
+                    details={"channel": "SHOPIFY", "shop_domain": normalized_shop},
+                )
+                db.add(audit)
+
+        db.commit()
+        return RedirectResponse(url=redirect_ok)
+    except Exception as e:
+        logger.exception("Shopify OAuth callback unhandled error: %s", e)
+        return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=oauth_failed")
 
 @app.get("/api")
 async def root():
