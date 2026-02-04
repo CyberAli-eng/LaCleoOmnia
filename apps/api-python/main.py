@@ -397,6 +397,11 @@ async def auth_shopify_callback(
                         api_secret = (data.get("apiSecret") or "").strip()
         except (JWTError, Exception):
             pass
+    # If state had a user_id but that user has no Shopify app creds, do NOT use env fallback:
+    # each user's app (e.g. Sadaf's) must use that user's stored API key/secret.
+    if user_id and (not api_key or not api_secret):
+        logger.warning("Shopify OAuth: user %s has no shopify_app credentials in Integrations", user_id)
+        return RedirectResponse(url=f"{frontend_url}/dashboard/integrations?error=shopify_creds_required")
     if not api_key or not api_secret:
         api_key = getattr(settings, "SHOPIFY_API_KEY", None) or ""
         api_secret = getattr(settings, "SHOPIFY_API_SECRET", None) or ""

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { API_BASE_URL } from "@/utils/api";
 import { setCookie, getCookie } from "@/utils/cookies";
 
-export default function LoginPage() {
+function LoginForm({ redirectTo }: { redirectTo: string }) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
@@ -14,20 +14,16 @@ export default function LoginPage() {
     const [googleClientId, setGoogleClientId] = useState<string | null>(null);
     const [mounted, setMounted] = useState(false);
     const router = useRouter();
-    const searchParams = useSearchParams();
-    const redirectTo = searchParams?.get("redirect") || "/dashboard";
 
     useEffect(() => {
         setMounted(true);
-        // Check both cookie and localStorage for token
         const token = getCookie("token") || localStorage.getItem("token");
         if (token) {
-            router.replace(redirectTo.startsWith("/") ? redirectTo : `/dashboard`);
+            router.replace(redirectTo.startsWith("/") ? redirectTo : "/dashboard");
         }
-        // Initialize Google Client ID after mount to avoid hydration mismatch
         const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null;
         setGoogleClientId(clientId);
-    }, [router]);
+    }, [router, redirectTo]);
 
     useEffect(() => {
         if (!mounted) return;
@@ -96,7 +92,7 @@ export default function LoginPage() {
                 existingScript.remove();
             }
         };
-    }, [googleClientId, router, mounted]);
+    }, [googleClientId, router, mounted, redirectTo]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -293,4 +289,22 @@ export default function LoginPage() {
             </div>
         </div>
     );
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex min-h-screen items-center justify-center bg-slate-50">
+                <div className="text-slate-600">Loading…</div>
+            </div>
+        }>
+            <LoginPageContent />
+        </Suspense>
+    );
+}
+
+function LoginPageContent() {
+    const searchParams = useSearchParams();
+    const redirectTo = searchParams?.get("redirect") || "/dashboard";
+    return <LoginForm redirectTo={redirectTo} />;
 }

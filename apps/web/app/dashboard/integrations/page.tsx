@@ -65,6 +65,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   oauth_failed: "OAuth connection failed. Please try again or use manual connection.",
   missing_params: "Missing query parameters.",
   missing_shop_or_code: "Missing required parameter.",
+  shopify_creds_required:
+    "Add your Shopify App API Key and Secret in this dashboard first: Channels → Shopify → Configure (pencil). Each user must add their own app credentials.",
 };
 
 const COLOR_CLASSES: Record<string, string> = {
