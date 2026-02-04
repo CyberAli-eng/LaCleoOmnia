@@ -410,7 +410,7 @@ export default function OrdersPage() {
                   href="/dashboard/integrations"
                   className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
                 >
-                  Connect Shopify to Import Orders
+                  Connect Marketplace channels to Import Orders
                 </Link>
               )}
             </div>

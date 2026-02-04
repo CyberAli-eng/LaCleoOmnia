@@ -346,7 +346,7 @@ export default function InventoryPage() {
             <div className="py-12 text-center text-slate-500">
               {searchTerm || selectedWarehouse !== "all" || lowStockOnly
                 ? "No items match your filters."
-                : "No inventory records yet. Connect Shopify and click Sync Shopify, or add inventory manually."}
+                : "No inventory records yet. Connect Marketplace channels and click Sync Marketplace channels, or add inventory manually."}
             </div>
           )}
         </div>
