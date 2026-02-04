@@ -109,9 +109,13 @@ function IntegrationsPageContent() {
   const [showSetupForm, setShowSetupForm] = useState<string | null>(null);
   const [connectFormData, setConnectFormData] = useState<Record<string, string>>({});
   const [guideProvider, setGuideProvider] = useState<Provider | null>(null);
+  const [connectedChannels, setConnectedChannels] = useState<{ id: string; name: string; accountId?: string }[]>([]);
 
   useEffect(() => {
     loadCatalog();
+    authFetch("/integrations/connected-summary")
+      .then((list: any) => setConnectedChannels(Array.isArray(list) ? list : []))
+      .catch(() => setConnectedChannels([]));
   }, []);
 
   useEffect(() => {
@@ -312,11 +316,40 @@ function IntegrationsPageContent() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Integrations</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Channels & integrations</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Connect your commerce channels and logistics. All options are driven by the catalog.
+          Configure channel connectors and sync orders, inventory, and logistics.
         </p>
       </div>
+
+      {/* Channel summary (Unicommerce-style: connected channels at a glance) */}
+      {connectedChannels.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3">
+            Channel summary
+          </h2>
+          <p className="text-sm text-slate-600 mb-4">
+            {connectedChannels.length} channel(s) connected. Trigger sync from Sync & workers.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {connectedChannels.map((ch) => (
+              <span
+                key={ch.id}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-1.5 text-sm font-medium text-emerald-800"
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                {ch.name}
+              </span>
+            ))}
+          </div>
+          <Link
+            href="/dashboard/workers"
+            className="mt-4 inline-block text-sm font-medium text-blue-600 hover:text-blue-500"
+          >
+            Open Sync & workers →
+          </Link>
+        </div>
+      )}
 
       {status && (
         <div
@@ -332,7 +365,7 @@ function IntegrationsPageContent() {
             <h2 className="text-lg font-semibold text-slate-900">{section.title}</h2>
             <p className="text-sm text-slate-600 mt-0.5">{section.description}</p>
           </div>
-          <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 items-start">
             {section.providers.map((provider) => {
               const st = statusByProvider[provider.id] ?? {};
               const isConnected = st.connected === true;
@@ -343,7 +376,7 @@ function IntegrationsPageContent() {
               return (
                 <div
                   key={provider.id}
-                  className="rounded-xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm hover:shadow-md hover:border-slate-300/80 transition-all duration-200 flex flex-col"
+                  className="rounded-xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm hover:shadow-md hover:border-slate-300/80 transition-all duration-200 flex flex-col min-h-[280px]"
                 >
                   <div className="flex items-start justify-between gap-3 mb-4">
                     <div className="flex items-center gap-3 min-w-0">
@@ -428,9 +461,9 @@ function IntegrationsPageContent() {
                                   <button
                                     type="button"
                                     onClick={() => setShowSetupForm(showSetupForm === provider.id ? null : provider.id)}
-                                    className="w-full rounded-lg border border-blue-600 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                                    className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                                   >
-                                    Add Shopify App API Key & Secret
+                                    Configure
                                   </button>
                                 ) : (
                                   <div className="space-y-3 pt-2 border-t border-slate-200">
@@ -491,9 +524,9 @@ function IntegrationsPageContent() {
                             onClick={() =>
                               setShowConnectForm(showConnectForm === provider.id ? null : provider.id)
                             }
-                            className="w-full rounded-lg border border-teal-600 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50"
+                            className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                           >
-                            Connect with API key
+                            Configure
                           </button>
                         )}
                       {provider.connectType === "manual" && (

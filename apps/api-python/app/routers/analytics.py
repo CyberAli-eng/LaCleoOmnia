@@ -6,12 +6,142 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
-from app.models import Order, User, ChannelAccount, OrderProfit
+from app.models import Order, User, ChannelAccount, OrderProfit, OrderStatus
 from app.auth import get_current_user
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, date
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.get("/overview")
+async def get_dashboard_overview(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Unicommerce-style dashboard overview: Section 1 (Revenue & Orders today vs yesterday),
+    Section 2 (Order Alerts, Product Alerts, Channel Alerts). Used by the main dashboard UI.
+    """
+    try:
+        from app.models import OrderItem, Inventory
+
+        channel_accounts = db.query(ChannelAccount).filter(
+            ChannelAccount.user_id == current_user.id
+        ).all()
+        channel_account_ids = [ca.id for ca in channel_accounts]
+        connected_count = sum(
+            1 for c in channel_accounts
+            if getattr(c, "status", None) and str(getattr(c.status, "value", c.status)) == "CONNECTED"
+        )
+
+        if not channel_account_ids:
+            return {
+                "todayRevenue": 0,
+                "yesterdayRevenue": 0,
+                "todayOrders": 0,
+                "yesterdayOrders": 0,
+                "todayItems": 0,
+                "yesterdayItems": 0,
+                "orderAlerts": {"pendingOrders": 0, "pendingShipment": 0},
+                "productAlerts": {"lowStockCount": 0},
+                "channelAlerts": {"connectedCount": 0},
+                "recentOrders": [],
+            }
+
+        today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
+        today_end = today_start + timedelta(days=1)
+        yesterday_start = today_start - timedelta(days=1)
+
+        # Today/yesterday revenue and order count (by created_at)
+        orders_today = db.query(Order).filter(
+            Order.channel_account_id.in_(channel_account_ids),
+            Order.created_at >= today_start,
+            Order.created_at < today_end,
+        ).all()
+        orders_yesterday = db.query(Order).filter(
+            Order.channel_account_id.in_(channel_account_ids),
+            Order.created_at >= yesterday_start,
+            Order.created_at < today_start,
+        ).all()
+        today_revenue = sum(float(o.order_total or 0) for o in orders_today)
+        yesterday_revenue = sum(float(o.order_total or 0) for o in orders_yesterday)
+        today_orders = len(orders_today)
+        yesterday_orders = len(orders_yesterday)
+        today_ids = [o.id for o in orders_today]
+        yesterday_ids = [o.id for o in orders_yesterday]
+        today_items = db.query(func.coalesce(func.sum(OrderItem.qty), 0)).filter(
+            OrderItem.order_id.in_(today_ids)
+        ).scalar() if today_ids else 0
+        yesterday_items = db.query(func.coalesce(func.sum(OrderItem.qty), 0)).filter(
+            OrderItem.order_id.in_(yesterday_ids)
+        ).scalar() if yesterday_ids else 0
+        today_items = int(today_items or 0)
+        yesterday_items = int(yesterday_items or 0)
+
+        # Order alerts: pending (NEW/HOLD/CONFIRMED), pending shipment (CONFIRMED/PACKED)
+        pending_orders = db.query(func.count(Order.id)).filter(
+            Order.channel_account_id.in_(channel_account_ids),
+            Order.status.in_([OrderStatus.NEW, OrderStatus.HOLD, OrderStatus.CONFIRMED]),
+        ).scalar() or 0
+        pending_shipment = db.query(func.count(Order.id)).filter(
+            Order.channel_account_id.in_(channel_account_ids),
+            Order.status.in_([OrderStatus.CONFIRMED, OrderStatus.PACKED]),
+        ).scalar() or 0
+
+        # Low stock: variants from user's orders where inventory available < 10
+        variant_ids = [
+            r[0] for r in db.query(OrderItem.variant_id)
+            .join(Order, Order.id == OrderItem.order_id)
+            .filter(Order.channel_account_id.in_(channel_account_ids))
+            .filter(OrderItem.variant_id.isnot(None))
+            .distinct()
+            .all()
+        ]
+        low_stock_count = 0
+        if variant_ids:
+            invs = db.query(Inventory).filter(Inventory.variant_id.in_(variant_ids)).all()
+            for inv in invs:
+                avail = (inv.total_qty or 0) - (inv.reserved_qty or 0)
+                if avail < 10:
+                    low_stock_count += 1
+
+        # Recent orders
+        recent = (
+            db.query(Order)
+            .filter(Order.channel_account_id.in_(channel_account_ids))
+            .order_by(Order.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        recent_orders = [
+            {
+                "id": o.id,
+                "externalId": o.channel_order_id,
+                "source": o.channel.name.value if o.channel else "Unknown",
+                "status": getattr(o.status, "value", str(o.status)),
+                "total": float(o.order_total or 0),
+                "createdAt": o.created_at.isoformat() if o.created_at else None,
+            }
+            for o in recent
+        ]
+
+        return {
+            "todayRevenue": round(today_revenue, 2),
+            "yesterdayRevenue": round(yesterday_revenue, 2),
+            "todayOrders": today_orders,
+            "yesterdayOrders": yesterday_orders,
+            "todayItems": today_items,
+            "yesterdayItems": yesterday_items,
+            "orderAlerts": {"pendingOrders": int(pending_orders), "pendingShipment": int(pending_shipment)},
+            "productAlerts": {"lowStockCount": low_stock_count},
+            "channelAlerts": {"connectedCount": connected_count},
+            "recentOrders": recent_orders,
+        }
+    except Exception as e:
+        logger.error("Error in dashboard overview: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/summary")
 async def get_analytics_summary(

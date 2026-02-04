@@ -4,6 +4,21 @@ This document summarizes issues found during re-examination of the LaCleoOmnia p
 
 **Integration documentation:** All 8 channels (Shopify, Amazon, Flipkart, Myntra, Meta Ads, Google Ads, Delhivery, Selloship) have in-app **Guide** buttons with step-by-step setup. Backend catalog in `apps/api-python/app/routers/integrations.py` defines `setupSteps` (and optionally `setupGuide`) per provider. See [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md) for full integration rules and tables.
 
+**Inventory scoping:** `GET /api/inventory` is now scoped to the current user: only variants that appear in orders from the user's connected channel accounts are returned. If no marketplace is connected, the list is empty. This prevents stored inventory from being visible to all users when no channel is integrated. File: `apps/api-python/app/routers/inventory.py`.
+
+**Workers page:** Redesigned to show all connected channels (from `/integrations/connected-summary`) with per-channel "Sync orders" and "Sync inventory" (Shopify only). Each action calls the correct endpoint (`/sync/orders/{accountId}` or `/integrations/shopify/sync`). Job queue shows SyncJobs for the user's channel accounts.
+
+**Webhooks:** Subscriptions and events are channel-agnostic; subscription labels include channel name (e.g. "SHOPIFY (mystore)", "AMAZON"). Filter source dropdown is built from actual event sources. Register button label: "Register webhooks (Shopify)".
+
+**Integrations UI:** Card layout uses `min-h-[280px]` and `items-start` so opening one card's Configure form does not change the height of other cards. All connect/setup CTAs use the same label: "Configure".
+
+**Unicommerce-style replication:** Dashboard and channels follow Unicommerce's structure: (1) **Overview** – Section 1: Revenue & orders (today vs yesterday, items sold). Section 2: Alert grids – Order alerts (pending orders, pending shipment), Product alerts (low stock), Channel connectors (connected count). Section 3: Recent orders + Quick actions + Profit summary. API: `GET /api/analytics/overview`. (2) **Channels** – "Channel summary" at top with connected channels and link to Sync & workers. Sidebar: "Channels", "Sync & workers". (3) **Sync & workers** – Per-channel sync and job queue.
+
+**Unicommerce-style replication:** Dashboard and channels are aligned with Unicommerce's structure where applicable:
+- **Dashboard (Overview):** Section 1 – Revenue & orders (today vs yesterday, items sold). Section 2 – Alert grids: Order alerts (pending orders, pending shipment), Product alerts (low stock count), Channel connectors (connected count + link to configure). Section 3 – Recent orders + Quick actions + Profit summary. API: `GET /api/analytics/overview`.
+- **Channels/Integrations:** "Channel summary" at top listing connected channels with link to "Sync & workers". Sidebar: "Channels" (was Integrations), "Sync & workers" (was Workers). Page title: "Channels & integrations".
+- **Sync & workers:** Per-channel sync (orders + inventory for Shopify) and job queue, matching Unicommerce’s channel-wise sync and fulfillment visibility.
+
 ---
 
 ## Critical (fixed)

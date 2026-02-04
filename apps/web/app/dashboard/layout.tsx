@@ -11,10 +11,10 @@ const navItemsBase = [
   { href: "/dashboard/orders", label: "Orders", icon: "📦" },
   { href: "/dashboard/inventory", label: "Inventory", icon: "📋" },
   { href: "/dashboard/costs", label: "SKU Costs", icon: "💰" },
-  { href: "/dashboard/integrations", label: "Integrations", icon: "🔌" },
+  { href: "/dashboard/integrations", label: "Channels", icon: "🔌" },
   { href: "/dashboard/webhooks", label: "Webhooks", icon: "🔔" },
   { href: "/dashboard/analytics", label: "Analytics", icon: "📈" },
-  { href: "/dashboard/workers", label: "Workers", icon: "⚙️" },
+  { href: "/dashboard/workers", label: "Sync & workers", icon: "⚙️" },
   { href: "/dashboard/labels", label: "Labels", icon: "🏷️" },
   { href: "/dashboard/audit", label: "Audit Logs", icon: "📝" },
 ];

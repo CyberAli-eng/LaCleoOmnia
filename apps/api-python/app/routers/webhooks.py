@@ -283,22 +283,29 @@ async def get_webhook_subscriptions(
         ChannelAccount.user_id == current_user.id
     ).all()
 
-    # Build list of shop domains for this user (Shopify accounts) for display
+    # Build list with channel-agnostic labels (channel name + optional shop/account identifier)
+    channel_name = lambda acc: (
+        getattr(acc.channel, "name", None) and getattr(acc.channel.name, "value", str(acc.channel.name))
+    ) or "Channel"
     subscriptions = []
     for account in accounts:
-        # CONNECTED counts as ACTIVE for display; only DISCONNECTED is INACTIVE
         is_active = account.status.value == "CONNECTED"
-        topic = "orders/create, orders/updated, orders/cancelled, refunds/create, inventory_levels/update, products/update"
-        if getattr(account, "shop_domain", None):
-            topic = f"Shopify ({account.shop_domain}): " + topic
+        ch = channel_name(account)
+        label = f"{ch}"
+        if getattr(account, "shop_domain", None) and (account.shop_domain or "").strip():
+            label = f"{ch} ({account.shop_domain})"
+        topic_desc = "orders, inventory, products (webhooks)"
+        if ch == "SHOPIFY":
+            topic_desc = "orders/create, orders/updated, orders/cancelled, refunds/create, inventory_levels/update, products/update"
         subscriptions.append({
             "id": account.id,
             "integrationId": account.id,
-            "topic": topic,
+            "channel": ch,
+            "topic": f"{label}: {topic_desc}",
             "status": "ACTIVE" if is_active else "INACTIVE",
             "lastError": None,
-            "updatedAt": (account.updated_at.isoformat() if getattr(account, "updated_at", None) else None)
-            or (account.created_at.isoformat() if getattr(account, "created_at", None) else None),
+            "updatedAt": (getattr(account, "updated_at", None) and account.updated_at.isoformat())
+            or (account.created_at.isoformat() if account.created_at else None),
         })
 
     return subscriptions

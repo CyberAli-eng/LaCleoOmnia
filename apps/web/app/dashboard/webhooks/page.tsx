@@ -23,6 +23,7 @@ interface WebhookEvent {
 interface WebhookSubscription {
   id: string;
   integrationId: string;
+  channel?: string;
   topic: string;
   status: string;
   lastError?: string | null;
@@ -152,14 +153,17 @@ export default function WebhooksPage() {
       </div>
 
       {/* Subscriptions */}
-      <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h2 className="text-lg font-semibold text-slate-900">Webhook Subscriptions</h2>
-          <div className="flex items-center gap-2">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Webhook subscriptions</h2>
+            <p className="text-sm text-slate-500 mt-0.5">Channels that can send events to this app</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => setGuideOpen(true)}
-              className="rounded-lg px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 border border-blue-200"
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 border border-blue-200"
             >
               Guide
             </button>
@@ -167,12 +171,12 @@ export default function WebhooksPage() {
               type="button"
               onClick={handleRegisterShopifyWebhooks}
               disabled={registering}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {registering ? "Registering…" : "Register Shopify webhooks"}
+              {registering ? "Registering…" : "Register webhooks (Shopify)"}
             </button>
+            <span className="text-sm text-slate-500">{activeSubscriptions} active</span>
           </div>
-          <span className="text-sm text-slate-500 w-full sm:w-auto">{activeSubscriptions} active</span>
         </div>
         <div className="space-y-2">
           {subscriptions.map((sub) => (
@@ -228,9 +232,10 @@ export default function WebhooksPage() {
               onChange={(e) => setFilterSource(e.target.value)}
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="all">All Sources</option>
-              <option value="shopify">Shopify</option>
-              <option value="amazon">Amazon</option>
+              <option value="all">All channels</option>
+              {Array.from(new Set(events.map((e) => e.source).filter(Boolean))).sort().map((src) => (
+                <option key={src} value={src}>{src}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -379,9 +384,9 @@ export default function WebhooksPage() {
         onClose={() => setGuideOpen(false)}
         title="How to configure webhooks"
         steps={[
-          { step: 1, title: "Connect Shopify", description: "Go to Integrations and connect your Shopify store via OAuth (add App API Key & Secret first if needed)." },
-          { step: 2, title: "Register webhooks", description: "Click \"Register Shopify webhooks\" above (or use the same action on the Integrations page). This tells Shopify to send order and inventory events to this app." },
-          { step: 3, title: "Check subscriptions", description: "After registering, you should see active subscriptions above. Events will appear in the table below when Shopify sends them." },
+          { step: 1, title: "Connect a channel", description: "Go to Integrations and connect a channel that supports webhooks (e.g. Shopify). For Shopify, add App API Key & Secret first, then connect via OAuth." },
+          { step: 2, title: "Register webhooks", description: "Click \"Register webhooks (Shopify)\" above so the channel sends order and inventory events to this app. Other channels may support webhooks in future updates." },
+          { step: 3, title: "Monitor events", description: "Subscriptions show which channels are set up. Incoming events appear in the table below; filter by channel or status as needed." },
         ]}
       />
     </div>
