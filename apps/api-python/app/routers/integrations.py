@@ -1218,6 +1218,11 @@ async def shopify_sync(
     except Exception as e:
         logger.warning("Shopify inventory fetch in sync failed: %s", e)
     inventory_synced = persist_shopify_inventory(db, integration.shop_domain, inv_list or [])
+    try:
+        db.commit()
+    except Exception as e:
+        logger.warning("Inventory persist commit failed: %s", e)
+        db.rollback()
     message = f"Synced {orders_inserted} new orders and {inventory_synced} inventory records."
     return {
         "orders_synced": orders_inserted,

@@ -58,10 +58,20 @@ export default function ForgotPasswordPage() {
                         >
                             {message}
                             {resetLink && (
-                                <p className="mt-2 break-all">
-                                    <a href={resetLink} className="underline">
+                                <p className="mt-3 space-y-2">
+                                    <span className="block text-slate-600">Use this link to set a new password:</span>
+                                    <a href={resetLink} className="underline break-all">
                                         Open reset link
                                     </a>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(resetLink);
+                                        }}
+                                        className="ml-2 text-xs px-2 py-1 rounded bg-white/80 hover:bg-white border border-green-200"
+                                    >
+                                        Copy link
+                                    </button>
                                 </p>
                             )}
                         </div>

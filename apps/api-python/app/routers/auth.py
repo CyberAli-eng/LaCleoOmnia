@@ -18,6 +18,7 @@ from app.schemas import (
 )
 from app.auth import get_password_hash
 from app.config import settings
+from app.services.email_service import send_password_reset_email
 
 router = APIRouter()
 
@@ -135,12 +136,18 @@ async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get
     user.password_reset_token = token
     user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=RESET_TOKEN_EXPIRE_HOURS)
     db.commit()
-    # Optional: send email here (e.g. via SendGrid). For now we return link in dev only.
+
     frontend_url = (getattr(settings, "FRONTEND_URL", None) or "").strip().rstrip("/") or "http://localhost:3000"
     reset_link = f"{frontend_url}/reset-password?token={token}"
-    out = {"message": "If an account exists with this email, you will receive a password reset link."}
-    if settings.IS_DEVELOPMENT:
-        out["reset_link"] = reset_link
+
+    # Send email when SMTP is configured; otherwise user gets link from response
+    sent = send_password_reset_email(user.email, reset_link, getattr(user, "name", None))
+    out = {
+        "message": "If an account exists with this email, you will receive a password reset link.",
+        "reset_link": reset_link,
+    }
+    if sent:
+        out["message"] = "A password reset link has been sent to your email."
     return out
 
 

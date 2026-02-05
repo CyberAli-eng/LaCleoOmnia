@@ -129,6 +129,15 @@ class Settings:
     
     # Security
     ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",") if os.getenv("ALLOWED_HOSTS") else ["*"]
+
+    # Password reset email (optional)
+    FRONTEND_URL = os.getenv("FRONTEND_URL", "").strip().rstrip("/") or "http://localhost:3000"
+    SMTP_HOST = os.getenv("SMTP_HOST", "")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+    SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("1", "true", "yes")
+    EMAIL_FROM = os.getenv("EMAIL_FROM", "noreply@lacleoomnia.com")
     
     def __str__(self):
         return f"Settings(ENV={self.ENV}, IS_PRODUCTION={self.IS_PRODUCTION}, IS_CLOUD={self.IS_CLOUD})"
