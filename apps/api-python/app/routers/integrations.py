@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.models import (
@@ -989,60 +990,75 @@ async def shopify_sync_orders(
             detail="Failed to fetch orders from Shopify.",
         )
     inserted = 0
-    for o in raw_orders:
-        shopify_id = str(o.get("id") or "")
-        if not shopify_id:
-            continue
-        # Idempotent: skip if we already have this order for this user's account
-        existing = db.query(Order).filter(
-            Order.channel_id == channel.id,
-            Order.channel_account_id == account.id,
-            Order.channel_order_id == shopify_id,
-        ).first()
-        if existing:
-            continue
+    try:
+        for o in raw_orders:
+            shopify_id = str(o.get("id") or "")
+            if not shopify_id:
+                continue
+            # Idempotent: skip if we already have this order for this user's account
+            existing = db.query(Order).filter(
+                Order.channel_id == channel.id,
+                Order.channel_account_id == account.id,
+                Order.channel_order_id == shopify_id,
+            ).first()
+            if existing:
+                continue
 
-        # Customer name from billing or email
-        billing = o.get("billing_address") or {}
-        first = (billing.get("first_name") or "").strip()
-        last = (billing.get("last_name") or "").strip()
-        customer_name = f"{first} {last}".strip() if (first or last) else (o.get("email") or "Customer")[:100]
-        customer_email = (o.get("email") or "").strip() or None
-        total = float(o.get("total_price", 0) or 0)
-        financial = (o.get("financial_status") or "").lower()
-        payment_mode = PaymentMode.PREPAID if financial == "paid" else PaymentMode.COD
+            # Customer name from billing or email
+            billing = o.get("billing_address") or {}
+            first = (billing.get("first_name") or "").strip()
+            last = (billing.get("last_name") or "").strip()
+            customer_name = f"{first} {last}".strip() if (first or last) else (o.get("email") or "Customer")[:100]
+            customer_email = (o.get("email") or "").strip() or None
+            total = float(o.get("total_price", 0) or 0)
+            financial = (o.get("financial_status") or "").lower()
+            payment_mode = PaymentMode.PREPAID if financial == "paid" else PaymentMode.COD
 
-        order = Order(
-            channel_id=channel.id,
-            channel_account_id=account.id,
-            channel_order_id=shopify_id,
-            customer_name=customer_name[:255],
-            customer_email=customer_email[:255] if customer_email else None,
-            payment_mode=payment_mode,
-            order_total=Decimal(str(total)),
-            status=OrderStatus.NEW,
+            order = Order(
+                channel_id=channel.id,
+                channel_account_id=account.id,
+                channel_order_id=shopify_id,
+                customer_name=customer_name[:255],
+                customer_email=customer_email[:255] if customer_email else None,
+                payment_mode=payment_mode,
+                order_total=Decimal(str(total)),
+                status=OrderStatus.NEW,
+            )
+            db.add(order)
+            db.flush()
+
+            for line in o.get("line_items") or []:
+                sku = (line.get("sku") or str(line.get("variant_id") or "") or "—")[:64]
+                title = (line.get("title") or "Item")[:255]
+                qty = int(line.get("quantity", 0) or 0)
+                price = float(line.get("price", 0) or 0)
+                db.add(OrderItem(
+                    order_id=order.id,
+                    sku=sku,
+                    title=title,
+                    qty=qty,
+                    price=Decimal(str(price)),
+                    fulfillment_status=FulfillmentStatus.PENDING,
+                ))
+            inserted += 1
+
+        if getattr(integration, "_integration_row", None):
+            integration._integration_row.last_synced_at = datetime.now(timezone.utc)
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        logger.warning("Shopify sync/orders integrity error (duplicate?): %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Some orders already exist from a previous sync. Synced count may be partial. Run sync again to continue.",
         )
-        db.add(order)
-        db.flush()
-
-        for line in o.get("line_items") or []:
-            sku = (line.get("sku") or str(line.get("variant_id") or "") or "—")[:64]
-            title = (line.get("title") or "Item")[:255]
-            qty = int(line.get("quantity", 0) or 0)
-            price = float(line.get("price", 0) or 0)
-            db.add(OrderItem(
-                order_id=order.id,
-                sku=sku,
-                title=title,
-                qty=qty,
-                price=Decimal(str(price)),
-                fulfillment_status=FulfillmentStatus.PENDING,
-            ))
-        inserted += 1
-
-    if getattr(integration, "_integration_row", None):
-        integration._integration_row.last_synced_at = datetime.now(timezone.utc)
-    db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.exception("Shopify sync/orders failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Order sync failed. Check server logs or try again.",
+        )
     return {"synced": inserted, "total_fetched": len(raw_orders), "message": f"Imported {inserted} new orders."}
 
 
@@ -1120,53 +1136,79 @@ async def shopify_sync(
 
     orders_inserted = 0
     new_order_ids: list[str] = []
-    for o in raw_orders:
-        shopify_id = str(o.get("id") or "")
-        if not shopify_id:
-            continue
-        if db.query(Order).filter(Order.channel_id == channel.id, Order.channel_account_id == account.id, Order.channel_order_id == shopify_id).first():
-            continue
-        billing = o.get("billing_address") or {}
-        first = (billing.get("first_name") or "").strip()
-        last = (billing.get("last_name") or "").strip()
-        customer_name = f"{first} {last}".strip() if (first or last) else (o.get("email") or "Customer")[:100]
-        customer_email = (o.get("email") or "").strip() or None
-        total = float(o.get("total_price", 0) or 0)
-        financial = (o.get("financial_status") or "").lower()
-        payment_mode = PaymentMode.PREPAID if financial == "paid" else PaymentMode.COD
-        shipping_addr = _format_address(o.get("shipping_address"))
-        billing_addr = _format_address(o.get("billing_address"))
-        order = Order(
-            channel_id=channel.id,
-            channel_account_id=account.id,
-            channel_order_id=shopify_id,
-            customer_name=customer_name[:255],
-            customer_email=customer_email[:255] if customer_email else None,
-            shipping_address=shipping_addr,
-            billing_address=billing_addr,
-            payment_mode=payment_mode,
-            order_total=Decimal(str(total)),
-            status=OrderStatus.NEW,
-        )
-        db.add(order)
-        db.flush()
-        for line in o.get("line_items") or []:
-            sku = (line.get("sku") or str(line.get("variant_id") or "") or "—")[:64]
-            title = (line.get("title") or "Item")[:255]
-            qty = int(line.get("quantity", 0) or 0)
-            price = float(line.get("price", 0) or 0)
-            db.add(OrderItem(
-                order_id=order.id,
-                sku=sku,
-                title=title,
-                qty=qty,
-                price=Decimal(str(price)),
-                fulfillment_status=FulfillmentStatus.PENDING,
-            ))
-        new_order_ids.append(order.id)
-        orders_inserted += 1
+    try:
+        for o in raw_orders:
+            shopify_id = str(o.get("id") or "")
+            if not shopify_id:
+                continue
+            if db.query(Order).filter(Order.channel_id == channel.id, Order.channel_account_id == account.id, Order.channel_order_id == shopify_id).first():
+                continue
+            billing = o.get("billing_address") or {}
+            first = (billing.get("first_name") or "").strip()
+            last = (billing.get("last_name") or "").strip()
+            customer_name = f"{first} {last}".strip() if (first or last) else (o.get("email") or "Customer")[:100]
+            customer_email = (o.get("email") or "").strip() or None
+            total = float(o.get("total_price", 0) or 0)
+            financial = (o.get("financial_status") or "").lower()
+            payment_mode = PaymentMode.PREPAID if financial == "paid" else PaymentMode.COD
+            shipping_addr = _format_address(o.get("shipping_address"))
+            billing_addr = _format_address(o.get("billing_address"))
+            order = Order(
+                channel_id=channel.id,
+                channel_account_id=account.id,
+                channel_order_id=shopify_id,
+                customer_name=customer_name[:255],
+                customer_email=customer_email[:255] if customer_email else None,
+                shipping_address=shipping_addr,
+                billing_address=billing_addr,
+                payment_mode=payment_mode,
+                order_total=Decimal(str(total)),
+                status=OrderStatus.NEW,
+            )
+            db.add(order)
+            db.flush()
+            for line in o.get("line_items") or []:
+                sku = (line.get("sku") or str(line.get("variant_id") or "") or "—")[:64]
+                title = (line.get("title") or "Item")[:255]
+                qty = int(line.get("quantity", 0) or 0)
+                price = float(line.get("price", 0) or 0)
+                db.add(OrderItem(
+                    order_id=order.id,
+                    sku=sku,
+                    title=title,
+                    qty=qty,
+                    price=Decimal(str(price)),
+                    fulfillment_status=FulfillmentStatus.PENDING,
+                ))
+            new_order_ids.append(order.id)
+            orders_inserted += 1
 
-    # 2) Sync inventory into DB (cache + Inventory table); never crash
+        # 2) Recompute profit for newly synced orders (uses sku_costs when present)
+        for oid in new_order_ids:
+            try:
+                compute_profit_for_order(db, oid)
+            except Exception as e:
+                logger.warning("Profit recompute for order %s failed: %s", oid, e)
+
+        if getattr(integration, "_integration_row", None):
+            integration._integration_row.last_synced_at = datetime.now(timezone.utc)
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        logger.warning("Shopify sync integrity error (duplicate?): %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Some orders already exist from a previous sync. Synced count may be partial. Run sync again to continue.",
+        )
+    except Exception as e:
+        db.rollback()
+        logger.exception("Shopify sync failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Sync failed. Check server logs or try again.",
+        )
+
+    # Inventory sync (outside order transaction; never fail the request)
     inv_list: list = []
     try:
         inv_list = await shopify_get_inventory(
@@ -1176,17 +1218,6 @@ async def shopify_sync(
     except Exception as e:
         logger.warning("Shopify inventory fetch in sync failed: %s", e)
     inventory_synced = persist_shopify_inventory(db, integration.shop_domain, inv_list or [])
-
-    # 3) Recompute profit for newly synced orders (uses sku_costs when present)
-    for oid in new_order_ids:
-        try:
-            compute_profit_for_order(db, oid)
-        except Exception as e:
-            logger.warning("Profit recompute for order %s failed: %s", oid, e)
-
-    if getattr(integration, "_integration_row", None):
-        integration._integration_row.last_synced_at = datetime.now(timezone.utc)
-    db.commit()
     message = f"Synced {orders_inserted} new orders and {inventory_synced} inventory records."
     return {
         "orders_synced": orders_inserted,

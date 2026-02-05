@@ -45,6 +45,22 @@ class UserResponse(BaseModel):
     name: str
     role: UserRole
 
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+    @validator("email")
+    def validate_email(cls, v):
+        if "@" not in v or len(v.split("@")) != 2:
+            raise ValueError("Invalid email format")
+        return v.lower().strip()
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=8)
+
+
 # Channel Schemas
 class ShopifyConnectRequest(BaseModel):
     seller_name: str

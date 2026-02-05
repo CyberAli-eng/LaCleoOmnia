@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { API_BASE_URL } from "@/utils/api";
 import { setCookie, getCookie } from "@/utils/cookies";
 
@@ -250,6 +251,11 @@ function LoginForm({ redirectTo }: { redirectTo: string }) {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                             />
+                            <div className="mt-1 text-right">
+                                <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-500">
+                                    Forgot password?
+                                </Link>
+                            </div>
                         </div>
                     </div>
 

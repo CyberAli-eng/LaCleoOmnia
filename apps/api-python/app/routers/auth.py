@@ -1,16 +1,27 @@
 """
 Authentication routes
 """
+import secrets
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, UserRole
 from app.auth import verify_password, create_access_token, get_current_user
-from app.schemas import LoginRequest, LoginResponse, UserResponse, RegisterRequest
+from app.schemas import (
+    LoginRequest,
+    LoginResponse,
+    UserResponse,
+    RegisterRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+)
 from app.auth import get_password_hash
-from datetime import timedelta
+from app.config import settings
 
 router = APIRouter()
+
+RESET_TOKEN_EXPIRE_HOURS = 24
 
 @router.post("/login", response_model=LoginResponse)
 async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
@@ -108,3 +119,55 @@ async def get_me(current_user: User = Depends(get_current_user)):
 async def logout():
     """Logout (client-side token removal)"""
     return {"message": "Logged out successfully"}
+
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Request a password reset. If the email exists, a reset token is stored and the user
+    can use it on the reset-password page. In development (or when email is not configured),
+    the reset link can be returned in the response for testing.
+    """
+    user = db.query(User).filter(User.email == body.email).first()
+    if not user:
+        return {"message": "If an account exists with this email, you will receive a password reset link."}
+    token = secrets.token_urlsafe(32)
+    user.password_reset_token = token
+    user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=RESET_TOKEN_EXPIRE_HOURS)
+    db.commit()
+    # Optional: send email here (e.g. via SendGrid). For now we return link in dev only.
+    frontend_url = (getattr(settings, "FRONTEND_URL", None) or "").strip().rstrip("/") or "http://localhost:3000"
+    reset_link = f"{frontend_url}/reset-password?token={token}"
+    out = {"message": "If an account exists with this email, you will receive a password reset link."}
+    if settings.IS_DEVELOPMENT:
+        out["reset_link"] = reset_link
+    return out
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Set a new password using the token from the forgot-password email."""
+    if not body.token or not body.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token and new password are required.",
+        )
+    user = (
+        db.query(User)
+        .filter(
+            User.password_reset_token == body.token,
+            User.password_reset_expires.isnot(None),
+            User.password_reset_expires > datetime.now(timezone.utc),
+        )
+        .first()
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset link. Please request a new one.",
+        )
+    user.password_hash = get_password_hash(body.new_password)
+    user.password_reset_token = None
+    user.password_reset_expires = None
+    db.commit()
+    return {"message": "Password has been reset. You can sign in with your new password."}

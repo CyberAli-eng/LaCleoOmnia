@@ -91,6 +91,8 @@ class User(Base):
     role = Column(SQLEnum(UserRole), default=UserRole.STAFF)
     created_at = Column("created_at", DateTime, server_default=func.now())
     updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
+    password_reset_token = Column("password_reset_token", String, nullable=True)
+    password_reset_expires = Column("password_reset_expires", DateTime(timezone=True), nullable=True)
 
 class Channel(Base):
     __tablename__ = "channels"
@@ -217,7 +219,12 @@ class Order(Base):
     shipment = relationship("Shipment", back_populates="order", uselist=False)
     
     __table_args__ = (
-        UniqueConstraint("channel_id", "channel_order_id", name="orders_channel_order_unique"),
+        UniqueConstraint(
+            "channel_id",
+            "channel_account_id",
+            "channel_order_id",
+            name="orders_channel_account_order_unique",
+        ),
     )
 
 class OrderItem(Base):
