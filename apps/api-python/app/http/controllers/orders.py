@@ -10,7 +10,7 @@ from app.database import get_db
 from app.models import Order, OrderItem, OrderStatus, User, FulfillmentStatus, Warehouse, Inventory, InventoryMovement, InventoryMovementType, Channel, ChannelAccount, AuditLog, AuditLogAction, OrderProfit
 from app.auth import get_current_user
 from app.services.warehouse_helper import get_default_warehouse
-from app.schemas import OrderResponse, ShipOrderRequest
+from app.http.requests import OrderResponse, ShipOrderRequest
 from decimal import Decimal
 
 router = APIRouter()

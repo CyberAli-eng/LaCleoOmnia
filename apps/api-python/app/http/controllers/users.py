@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, UserRole
 from app.auth import get_current_user, require_admin
-from app.schemas import RegisterRequest
+from app.http.requests import RegisterRequest
 from app.auth import get_password_hash
 
 router = APIRouter()

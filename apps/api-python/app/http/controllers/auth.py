@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, UserRole
 from app.auth import verify_password, create_access_token, get_current_user
-from app.schemas import (
+from app.http.requests import (
     LoginRequest,
     LoginResponse,
     UserResponse,

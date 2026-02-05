@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import ChannelAccount, ChannelType, ChannelAccountStatus, User
 from app.auth import get_current_user
-from app.schemas import ShopifyConnectRequest
+from app.http.requests import ShopifyConnectRequest
 from app.services.shopify import ShopifyService
 from app.services.credentials import encrypt_token, decrypt_token
 from pydantic import BaseModel

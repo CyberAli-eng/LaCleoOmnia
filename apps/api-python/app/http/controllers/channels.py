@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Channel, ChannelAccount, ChannelType, ChannelAccountStatus, User, AuditLog, AuditLogAction, ProviderCredential
 from app.auth import get_current_user, create_access_token
-from app.schemas import ShopifyConnectRequest, ChannelAccountResponse
+from app.http.requests import ShopifyConnectRequest, ChannelAccountResponse
 from app.services.shopify import ShopifyService
 from app.services.shopify_oauth import ShopifyOAuthService
 from app.services.credentials import encrypt_token, decrypt_token

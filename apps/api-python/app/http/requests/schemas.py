@@ -1,5 +1,5 @@
 """
-Pydantic schemas for request/response validation
+Pydantic schemas for request/response validation (Http/Requests).
 """
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List
@@ -13,24 +13,22 @@ from app.models import (
 
 # Auth Schemas
 class LoginRequest(BaseModel):
-    email: str  # Changed from EmailStr to allow @local emails for development
+    email: str
     password: str
-    
+
     @validator('email')
     def validate_email(cls, v):
-        # Basic email validation that allows @local for development
         if '@' not in v or len(v.split('@')) != 2:
             raise ValueError('Invalid email format')
         return v.lower().strip()
 
 class RegisterRequest(BaseModel):
-    email: str  # Changed from EmailStr to allow @local emails for development
+    email: str
     password: str
     name: str
-    
+
     @validator('email')
     def validate_email(cls, v):
-        # Basic email validation that allows @local for development
         if '@' not in v or len(v.split('@')) != 2:
             raise ValueError('Invalid email format')
         return v.lower().strip()

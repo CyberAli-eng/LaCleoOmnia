@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Product, ProductVariant, User, UserRole
 from app.auth import get_current_user, require_admin
-from app.schemas import ProductCreateRequest, VariantCreateRequest
+from app.http.requests import ProductCreateRequest, VariantCreateRequest
 
 router = APIRouter()
 

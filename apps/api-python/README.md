@@ -74,35 +74,33 @@ python -m uvicorn main:app --reload
 apps/api-python/
 ├── app/
 │   ├── __init__.py
-│   ├── database.py          # Database configuration
-│   ├── models.py            # SQLAlchemy models
-│   ├── schemas.py           # Pydantic schemas
-│   ├── auth.py              # Authentication utilities
-│   ├── routers/             # API route handlers
-│   │   ├── auth.py
-│   │   ├── channels.py
-│   │   ├── orders.py
-│   │   ├── inventory.py
-│   │   ├── products.py
-│   │   ├── warehouses.py
-│   │   ├── shipments.py
-│   │   └── sync.py
+│   ├── auth.py              # JWT & password auth
+│   ├── config.py            # App config (env)
+│   ├── database.py          # DB session, engine
+│   ├── models/              # SQLAlchemy models (single package)
+│   │   └── __init__.py      # User, Order, Channel, etc.
+│   ├── http/                # HTTP layer
+│   │   ├── controllers/     # Request handlers (ex-routers)
+│   │   │   ├── auth.py, orders.py, channels.py, integrations.py, ...
+│   │   └── requests/        # Pydantic schemas (validation)
+│   │       ├── __init__.py
+│   │       └── schemas.py
 │   └── services/            # Business logic
-│       ├── credentials.py
-│       ├── shopify.py
-│       ├── shopify_service.py
-│       ├── order_import.py
-│       ├── delhivery_service.py
-│       ├── selloship_service.py
-│       ├── shipment_sync.py   # Unified Delhivery + Selloship sync
-│       ├── profit_calculator.py
-│       └── ad_spend_sync.py
+│       ├── credentials.py, email_service.py, http_client.py
+│       ├── shopify*.py, selloship_service.py, delhivery_service.py
+│       ├── order_import.py, profit_calculator.py, shipment_sync.py
+│       └── ad_spend_sync.py, sync_engine.py, ...
+├── routes/
+│   ├── __init__.py
+│   └── api.py               # Central route registration (/api/*)
 ├── alembic/                 # Database migrations
-├── main.py                  # FastAPI app entry point
-├── seed.py                  # Database seeding
+├── main.py                  # FastAPI entry point
+├── seed.py
 ├── requirements.txt
 └── .env.example
 ```
+
+See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) for flow and details.
 
 ## 🔑 API Endpoints
 

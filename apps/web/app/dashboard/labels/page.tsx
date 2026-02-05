@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { authFetch } from "@/utils/api";
+import { authFetch, API_BASE_URL } from "@/utils/api";
 import { formatCurrency } from "@/utils/currency";
 import Link from "next/link";
 import { TablePagination } from "@/app/components/TablePagination";
@@ -158,13 +158,13 @@ export default function LabelsPage() {
   };
 
   const printLabel = (label: Label) => {
-    // In production, this would open the actual label PDF
-    window.open(`/api/labels/${label.id}/print`, "_blank");
+    // Open backend label print endpoint (same origin as API)
+    window.open(`${API_BASE_URL}/labels/${label.id}/print`, "_blank");
   };
 
   const downloadInvoice = (orderId: string) => {
-    // In production, this would generate and download invoice
-    window.open(`/api/orders/${orderId}/invoice`, "_blank");
+    // Open backend invoice endpoint (same origin as API)
+    window.open(`${API_BASE_URL}/orders/${orderId}/invoice`, "_blank");
   };
 
   const totalLabels = labels.length;

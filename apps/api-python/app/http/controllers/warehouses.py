@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Warehouse, User
 from app.auth import get_current_user
-from app.schemas import WarehouseCreateRequest
+from app.http.requests import WarehouseCreateRequest
 
 router = APIRouter()
 

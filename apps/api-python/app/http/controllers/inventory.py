@@ -21,7 +21,7 @@ from app.models import (
     OrderItem,
 )
 from app.auth import get_current_user
-from app.schemas import InventoryAdjustRequest, InventoryResponse
+from app.http.requests import InventoryAdjustRequest, InventoryResponse
 
 router = APIRouter()
 
